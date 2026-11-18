@@ -1,8 +1,10 @@
+import { Stack } from 'expo-router';
 import type { ReactNode } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
-import { AppBar } from './AppBar';
+import { HeaderActions } from './nativeHeader';
+import { ProgressBar } from './ProgressBar';
 import { Text } from './Text';
 
 export interface StepperProps {
@@ -11,29 +13,12 @@ export interface StepperProps {
   label: string;
 }
 
-/** Progress bars plus "Step N of 6 · Label". */
+/** Native progress bar plus "Step N of 6 · Label". */
 export function Stepper({ step, total, label }: StepperProps) {
   const t = useTheme();
   return (
-    <View
-      accessible
-      accessibilityRole="progressbar"
-      accessibilityLabel={`Step ${step} of ${total}, ${label}`}
-      style={{ paddingHorizontal: t.space.s4, gap: 6 }}
-    >
-      <View style={{ flexDirection: 'row', gap: 4 }}>
-        {Array.from({ length: total }, (_, i) => (
-          <View
-            key={i}
-            style={{
-              flex: 1,
-              height: 4,
-              borderRadius: t.radius.full,
-              backgroundColor: i < step ? t.colors.brand : t.colors.surface2,
-            }}
-          />
-        ))}
-      </View>
+    <View style={{ gap: t.space.s2 }}>
+      <ProgressBar value={step / total} accessibilityLabel={`Step ${step} of ${total}, ${label}`} />
       <Text variant="sub" color="ink2">
         Step {step} of {total} · {label}
       </Text>
@@ -43,7 +28,10 @@ export function Stepper({ step, total, label }: StepperProps) {
 
 export interface FlowScreenProps {
   title: string;
-  /** Back (sub-page arrow) or close (×). Omit to hide. */
+  /**
+   * With `backIcon="close"`: a ✕ in the header (glass toolbar on iOS) that calls `onBack`.
+   * Otherwise the native back button and swipe-back handle going back.
+   */
   onBack?: () => void;
   backIcon?: 'back' | 'close';
   stepper?: StepperProps;
@@ -52,58 +40,31 @@ export interface FlowScreenProps {
   footer?: ReactNode;
   /** Center the content vertically (PIN screens). */
   centered?: boolean;
-  scroll?: boolean;
-  /** Presented as an iOS page-sheet modal: the sheet already sits below the status bar. */
-  inModal?: boolean;
 }
 
-/** Flows and forms: app bar, optional stepper, scrolling content, primary action pinned to the bottom. */
-export function FlowScreen({
-  title,
-  onBack,
-  backIcon = 'back',
-  stepper,
-  children,
-  footer,
-  centered,
-  scroll = true,
-  inModal,
-}: FlowScreenProps) {
+/** Flows and forms under a native header: stepper, scrolling content, primary action pinned to the bottom. */
+export function FlowScreen({ title, onBack, backIcon = 'back', stepper, children, footer, centered }: FlowScreenProps) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const content = (
-    <View style={{ flexGrow: 1, gap: t.space.s5, justifyContent: centered ? 'center' : 'flex-start' }}>{children}</View>
-  );
+  const close = backIcon === 'close' && onBack;
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{
-        flex: 1,
-        backgroundColor: t.colors.bg,
-        paddingTop: inModal && Platform.OS === 'ios' ? t.space.s2 : insets.top,
-      }}
+      style={{ flex: 1, backgroundColor: t.colors.bg }}
     >
-      {onBack ? (
-        <AppBar title={title} variant={backIcon === 'close' ? 'flow' : 'sub'} onBack={onBack} />
-      ) : (
-        <View style={{ minHeight: 52, justifyContent: 'center', alignItems: 'center' }}>
-          <Text variant="title3" accessibilityRole="header">
-            {title}
-          </Text>
+      <Stack.Screen options={{ title, headerBackVisible: !close }} />
+      {close ? <HeaderActions left={[{ sf: 'xmark', icon: 'close', label: 'Close', onPress: close }]} /> : null}
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ flexGrow: 1, padding: t.space.s4, paddingBottom: t.space.s6 }}
+      >
+        <View style={{ flexGrow: 1, gap: t.space.s5, justifyContent: centered ? 'center' : 'flex-start' }}>
+          {stepper ? <Stepper {...stepper} /> : null}
+          {children}
         </View>
-      )}
-      {stepper ? <Stepper {...stepper} /> : null}
-      {scroll ? (
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ flexGrow: 1, padding: t.space.s4, paddingBottom: t.space.s6 }}
-        >
-          {content}
-        </ScrollView>
-      ) : (
-        <View style={{ flex: 1, padding: t.space.s4 }}>{content}</View>
-      )}
+      </ScrollView>
       {footer ? (
         <View
           style={{

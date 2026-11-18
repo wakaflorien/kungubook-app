@@ -15,11 +15,11 @@ export const PROVIDERS: Record<Provider, { name: string; initials: string; types
   other: { name: 'Other', initials: '', types: ['mobile_money', 'bank', 'card'] },
 };
 
-export const ACCOUNT_TYPES: { value: AccountType; label: string; icon: string }[] = [
-  { value: 'mobile_money', label: 'Mobile money', icon: 'smartphone' },
-  { value: 'bank', label: 'Bank', icon: 'account_balance' },
-  { value: 'card', label: 'Card', icon: 'credit_card' },
-  { value: 'cash', label: 'Cash', icon: 'payments' },
+export const ACCOUNT_TYPES: { value: AccountType; label: string; short: string; icon: string }[] = [
+  { value: 'mobile_money', label: 'Mobile money', short: 'Mobile', icon: 'smartphone' },
+  { value: 'bank', label: 'Bank', short: 'Bank', icon: 'account_balance' },
+  { value: 'card', label: 'Card', short: 'Card', icon: 'credit_card' },
+  { value: 'cash', label: 'Cash', short: 'Cash', icon: 'payments' },
 ];
 
 export const typeIcon = (type?: AccountType) => ACCOUNT_TYPES.find((t) => t.value === type)?.icon ?? 'wallet';

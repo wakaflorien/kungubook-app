@@ -1,3 +1,4 @@
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import type { Session } from '../../api';
@@ -45,14 +46,19 @@ export function SocialButtons({ onSession, onError, disabled }: SocialButtonsPro
   return (
     <View style={{ gap: t.space.s3 }}>
       {apple ? (
-        <Button
-          label="Continue with Apple"
-          icon="phone_iphone"
-          variant="secondary"
-          block
-          loading={busy === 'apple'}
-          disabled={disabled || !!busy}
-          onPress={() => void run('apple')}
+        // The system button, as Apple's guidelines require: black on light, white on dark.
+        <AppleAuthentication.AppleAuthenticationButton
+          buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+          buttonStyle={
+            t.scheme === 'dark'
+              ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+              : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+          }
+          cornerRadius={t.radius.md}
+          style={{ height: 48, opacity: disabled || busy ? 0.45 : 1 }}
+          onPress={() => {
+            if (!disabled && !busy) void run('apple');
+          }}
         />
       ) : null}
       <Button

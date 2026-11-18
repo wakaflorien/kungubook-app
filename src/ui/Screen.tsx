@@ -1,31 +1,35 @@
+import { Stack } from 'expo-router';
 import type { ReactNode } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
-import { TAB_BAR_HEIGHT } from './TabBar';
 import { Text } from './Text';
 
 export interface ScreenProps {
   children: ReactNode;
-  /** Content above the scroll area (an AppBar). */
-  header?: ReactNode;
-  /** Leave room for the floating tab bar (tab roots only). */
-  tabRoot?: boolean;
+  /** Title in the native header (large title on tab roots and lists, set by the stack). */
+  title?: string;
   refreshing?: boolean;
   onRefresh?: () => void;
 }
 
-/** Screen scaffold: bg, safe area, 16px side padding, 24px between sections. */
-export function Screen({ children, header, tabRoot, refreshing, onRefresh }: ScreenProps) {
+/**
+ * Screen scaffold under a native header: bg, 16px side padding, 24px between sections.
+ * `contentInsetAdjustmentBehavior="automatic"` lets iOS place content under the glass header and
+ * above the tab bar, and makes large titles collapse on scroll.
+ */
+export function Screen({ children, title, refreshing, onRefresh }: ScreenProps) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   return (
-    <View style={{ flex: 1, backgroundColor: t.colors.bg, paddingTop: insets.top }}>
-      {header}
+    <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
+      {title !== undefined ? <Stack.Screen options={{ title }} /> : null}
       <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{
           paddingHorizontal: t.space.s4,
-          paddingBottom: (tabRoot ? TAB_BAR_HEIGHT + insets.bottom : insets.bottom) + t.space.s6,
+          paddingTop: t.space.s2,
+          paddingBottom: insets.bottom + t.space.s6,
           gap: t.space.s6,
         }}
         refreshControl={

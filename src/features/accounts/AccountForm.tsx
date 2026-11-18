@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { authErrorMessage } from '../../lib/auth/auth-service';
 import { newId } from '../../lib/id';
 import { useTheme } from '../../theme';
@@ -7,9 +7,9 @@ import {
   Banner,
   Button,
   FlowScreen,
-  Icon,
   Input,
   MoneyInput,
+  Segmented,
   Select,
   Switch,
   Text,
@@ -114,7 +114,6 @@ export function AccountForm({
       title={editing ? 'Edit account' : 'Add account'}
       onBack={onCancel}
       backIcon="close"
-      inModal
       footer={<Button label={editing ? 'Save changes' : 'Save account'} block loading={saving} onPress={save} />}
     >
       {failure ? <Banner tone="danger" title="Couldn't save the account" body={failure} /> : null}
@@ -123,42 +122,11 @@ export function AccountForm({
         <Text variant="label" color="ink2">
           Type
         </Text>
-        <View accessibilityRole="radiogroup" style={{ flexDirection: 'row', gap: t.space.s2 }}>
-          {ACCOUNT_TYPES.map((o) => {
-            const on = o.value === type;
-            return (
-              <Pressable
-                key={o.value}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: on }}
-                accessibilityLabel={o.label}
-                onPress={() => chooseType(o.value)}
-                style={{
-                  flex: 1,
-                  minHeight: 64,
-                  borderRadius: t.radius.md,
-                  borderWidth: on ? 2 : 1,
-                  borderColor: on ? t.colors.brand : t.colors.line,
-                  backgroundColor: on ? t.colors.brandSoft : t.colors.surface,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 4,
-                  padding: 6,
-                }}
-              >
-                <Icon name={o.icon} color={on ? 'brandStrong' : 'ink'} />
-                <Text
-                  variant="sub"
-                  color={on ? 'brandStrong' : 'ink'}
-                  numberOfLines={2}
-                  style={{ textAlign: 'center', fontFamily: t.type.title3.fontFamily, fontSize: 12 }}
-                >
-                  {o.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <Segmented
+          options={ACCOUNT_TYPES.map((o) => ({ value: o.value, label: o.short }))}
+          value={type}
+          onChange={chooseType}
+        />
       </View>
 
       {type !== 'cash' ? (
