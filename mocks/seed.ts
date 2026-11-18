@@ -5,8 +5,18 @@
 import type { Account, Transaction, components } from '../src/api';
 
 type User = components['schemas']['User'];
+type Settings = components['schemas']['Settings'];
 
 export const TODAY = '2026-11-17';
+
+/**
+ * Test credentials for the demo user, valid only on the local mock server (`pnpm mock`) and in tests.
+ * Fictional, like everything in this file.
+ */
+export const DEMO_EMAIL = 'keza@example.com';
+export const DEMO_PASSWORD = 'kungubook-demo';
+/** Reset-link token the mock accepts on POST /auth/password/reset. */
+export const DEMO_RESET_TOKEN = 'mock-reset-token';
 
 export const user: User = {
   id: '0193a1b2-0000-7000-8000-000000000001',
@@ -152,3 +162,22 @@ export const transactions: Transaction[] = [
 
 export const accountsTotal = (list: Account[]) =>
   list.filter((a) => a.include_in_total && !a.deleted_at).reduce((sum, a) => sum + a.balance_base, 0);
+
+/** Defaults from SettingsInput in the spec. */
+export const defaultSettings = (): Settings => ({
+  reminder_lead_days: [7, 1, 0],
+  quiet_start: '22:00',
+  quiet_end: '07:00',
+  channels: {
+    payment_out: ['push', 'email'],
+    payment_in: ['push'],
+    overdue: ['push', 'email'],
+    budget: ['push'],
+    review_inbox: ['push'],
+  },
+  weekly_summary: false,
+  analytics_opt_in: false,
+  hide_amounts: false,
+  appearance: 'system',
+  version: 1,
+});

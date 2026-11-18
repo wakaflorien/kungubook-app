@@ -10,6 +10,6 @@ export function createMockServer(baseUrl = MOCK_BASE_URL) {
   return { server, db, baseUrl };
 }
 
-export { createHandlers, createMockDb } from './handlers';
-export type { MockDb } from './handlers';
+export { createHandlers, createMockDb, kezaOf, KEZA_ID } from './handlers';
+export type { MockDb, MockUser } from './handlers';
 export * as seed from './seed';

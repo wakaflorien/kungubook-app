@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createMockServer } from '../../mocks/node';
+import { createMockServer, kezaOf } from '../../mocks/node';
 import { newId } from '../lib/id';
 import { ApiError, UpgradeRequiredError, createApiClient, memoryTokenStore, unwrap, type TokenStore } from './index';
 
@@ -18,8 +18,8 @@ const makeClient = (appVersion = '0.1.0') =>
   createApiClient({ baseUrl, appVersion, platform: 'ios', tokens, onSignedOut, onUpgradeRequired });
 
 beforeEach(() => {
-  db.accessTokens = new Set(['mock-access-1']);
-  db.refreshTokens = new Set(['mock-refresh-1']);
+  db.accessTokens = new Map([['mock-access-1', kezaOf(db).user.id]]);
+  db.refreshTokens = new Map([['mock-refresh-1', kezaOf(db).user.id]]);
   tokens = memoryTokenStore({ accessToken: 'mock-access-1', refreshToken: 'mock-refresh-1' });
   onSignedOut = vi.fn<() => void>();
   onUpgradeRequired = vi.fn<() => void>();
@@ -85,11 +85,11 @@ describe('api client', () => {
     const id = newId();
     const res = await unwrap(
       makeClient().POST('/transactions', {
-        body: { id, account_id: db.accounts[4]!.id, kind: 'out', amount: 5_000, currency: 'RWF' },
+        body: { id, account_id: kezaOf(db).accounts[4]!.id, kind: 'out', amount: 5_000, currency: 'RWF' },
       }),
     );
     expect(res.transaction.id).toBe(id);
-    expect(db.accounts[4]!.balance).toBe(57_600);
+    expect(kezaOf(db).accounts[4]!.balance).toBe(57_600);
   });
 
   it('signs out when the refresh token is refused', async () => {
@@ -111,7 +111,9 @@ describe('api client', () => {
   it('maps { error: { code, fields } } to a typed ApiError', async () => {
     const api = makeClient();
     const err = await unwrap(
-      api.POST('/transactions', { body: { id: newId(), account_id: db.accounts[0]!.id, kind: 'out', amount: 0 } }),
+      api.POST('/transactions', {
+        body: { id: newId(), account_id: kezaOf(db).accounts[0]!.id, kind: 'out', amount: 0 },
+      }),
     ).catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(ApiError);
@@ -137,11 +139,11 @@ describe('api client', () => {
     const before = (await unwrap(api.GET('/transactions'))).data.length;
     const id = newId();
     await unwrap(
-      api.POST('/transactions', { body: { id, account_id: db.accounts[0]!.id, kind: 'in', amount: 10_000 } }),
+      api.POST('/transactions', { body: { id, account_id: kezaOf(db).accounts[0]!.id, kind: 'in', amount: 10_000 } }),
     );
     // A retried POST with the same id returns the existing row (200), not a second row.
     await unwrap(
-      api.POST('/transactions', { body: { id, account_id: db.accounts[0]!.id, kind: 'in', amount: 10_000 } }),
+      api.POST('/transactions', { body: { id, account_id: kezaOf(db).accounts[0]!.id, kind: 'in', amount: 10_000 } }),
     );
     const after = await unwrap(api.GET('/transactions'));
 

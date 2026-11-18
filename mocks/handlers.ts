@@ -1,36 +1,75 @@
 /**
- * Stateful MSW handlers for flows where the mock must remember changes
- * (add a transaction, then see it in Activity and in the account balance).
- * Prism (`pnpm mock`) covers everything else statelessly.
+ * Stateful MSW handlers for the flows where the mock must remember changes:
+ * sign-up and sign-in, the signed-in user, settings, devices, accounts and transactions.
+ *
+ * Used by Vitest (msw/node) and by the local mock server (`pnpm mock`, scripts/mock-server.ts),
+ * which sends every other route to Prism. Several users can exist; Keza Uwase is seeded.
  */
 import { http, HttpResponse } from 'msw';
 import type { Account, Transaction, components } from '../src/api';
-import { accounts, accountsTotal, transactions, user } from './seed';
+import {
+  DEMO_EMAIL,
+  DEMO_PASSWORD,
+  DEMO_RESET_TOKEN,
+  accounts,
+  accountsTotal,
+  defaultSettings,
+  transactions,
+  user as kezaUser,
+} from './seed';
 
+type User = components['schemas']['User'];
+type UserInput = components['schemas']['UserInput'];
+type Settings = components['schemas']['Settings'];
+type SettingsInput = components['schemas']['SettingsInput'];
+type AccountInput = components['schemas']['AccountInput'];
 type TransactionInput = components['schemas']['TransactionInput'];
+type Device = components['schemas']['Device'];
 
-export interface MockDb {
+export interface MockUser {
+  user: User;
+  password: string;
+  settings: Settings;
   accounts: Account[];
   transactions: Transaction[];
-  /** Valid access tokens; refresh tokens rotate on every use. */
-  accessTokens: Set<string>;
-  refreshTokens: Set<string>;
+  devices: Device[];
+}
+
+export interface MockDb {
+  /** By user id. */
+  users: Map<string, MockUser>;
+  /** Access token → user id. */
+  accessTokens: Map<string, string>;
+  /** Refresh token → user id. Refresh tokens rotate on every use. */
+  refreshTokens: Map<string, string>;
   /** Requests below this X-App-Version get 426. */
   minAppVersion: string;
 }
 
+export const KEZA_ID = kezaUser.id;
+
 export function createMockDb(): MockDb {
-  return {
+  const keza: MockUser = {
+    user: structuredClone(kezaUser),
+    password: DEMO_PASSWORD,
+    settings: defaultSettings(),
     accounts: structuredClone(accounts),
     transactions: structuredClone(transactions),
-    accessTokens: new Set(['mock-access-1']),
-    refreshTokens: new Set(['mock-refresh-1']),
+    devices: [],
+  };
+  return {
+    users: new Map([[KEZA_ID, keza]]),
+    accessTokens: new Map([['mock-access-1', KEZA_ID]]),
+    refreshTokens: new Map([['mock-refresh-1', KEZA_ID]]),
     minAppVersion: '0.1.0',
   };
 }
 
-const err = (status: number, code: string, message: string) =>
-  HttpResponse.json({ error: { code, message } }, { status });
+/** Keza's data, for tests. */
+export const kezaOf = (db: MockDb): MockUser => db.users.get(KEZA_ID)!;
+
+const err = (status: number, code: string, message: string, fields?: Record<string, string>) =>
+  HttpResponse.json({ error: { code, message, ...(fields ? { fields } : {}) } }, { status });
 
 const semver = (v: string) =>
   v
@@ -43,86 +82,311 @@ const older = (a: string, b: string) => {
   return false;
 };
 
+const nowIso = () => new Date().toISOString();
+const sequenceId = (prefix: string, n: number) =>
+  `0193a1b2-0000-7000-8000-${prefix}${String(n).padStart(12 - prefix.length, '0')}`;
+
 export function createHandlers(baseUrl: string, db: MockDb = createMockDb()) {
   const url = (path: string) => `${baseUrl.replace(/\/$/, '')}${path}`;
-  let tokenSeq = 1;
+  let seq = 1;
 
-  /** Returns an error response, or null when the request may proceed. */
-  const guard = (request: Request, { auth = true } = {}) => {
+  const findByEmail = (email: string) =>
+    [...db.users.values()].find((u) => u.user.email.toLowerCase() === email.trim().toLowerCase());
+
+  const issueSession = (u: MockUser, isNewUser = false) => {
+    seq += 1;
+    const access = `mock-access-${seq}`;
+    const refresh = `mock-refresh-${seq}`;
+    db.accessTokens.set(access, u.user.id);
+    db.refreshTokens.set(refresh, u.user.id);
+    return { access_token: access, refresh_token: refresh, expires_in: 900, user: u.user, is_new_user: isNewUser };
+  };
+
+  const createUser = (
+    email: string,
+    password: string,
+    displayName: string,
+    method: 'password' | 'apple' | 'google',
+  ) => {
+    seq += 1;
+    const u: MockUser = {
+      user: {
+        id: sequenceId('u', seq),
+        email,
+        display_name: displayName,
+        country: 'RW',
+        base_currency: 'RWF',
+        timezone: 'Africa/Kigali',
+        week_starts_on: 1,
+        currencies: [],
+        sign_in_methods: [method],
+        email_verified: method !== 'password',
+        created_at: nowIso(),
+      },
+      password,
+      settings: defaultSettings(),
+      accounts: [],
+      transactions: [],
+      devices: [],
+    };
+    db.users.set(u.user.id, u);
+    return u;
+  };
+
+  /** 426 for old app versions. */
+  const versionGuard = (request: Request) => {
     const version = request.headers.get('X-App-Version');
-    if (version && older(version, db.minAppVersion)) return err(426, 'upgrade_required', 'Update the app');
-    if (!auth) return null;
+    return version && older(version, db.minAppVersion) ? err(426, 'upgrade_required', 'Update the app') : null;
+  };
+
+  /** The signed-in user, or an error response. */
+  const authed = (request: Request): MockUser | Response => {
+    const denied = versionGuard(request);
+    if (denied) return denied;
     const token = request.headers.get('Authorization')?.replace(/^Bearer /, '');
     if (!token) return err(401, 'unauthorized', 'Missing token');
-    if (!db.accessTokens.has(token)) return err(401, 'token_expired', 'Access token expired');
-    return null;
+    const userId = db.accessTokens.get(token);
+    const u = userId ? db.users.get(userId) : undefined;
+    if (!u) return err(401, 'token_expired', 'Access token expired');
+    return u;
+  };
+  const isResponse = (v: unknown): v is Response => v instanceof Response;
+
+  const listAccounts = (u: MockUser) => {
+    const live = u.accounts.filter((a) => !a.deleted_at && !a.archived);
+    return { data: live, total: { amount: accountsTotal(live), currency: u.user.base_currency } };
   };
 
   return [
     http.get(
       url('/health'),
-      ({ request }) =>
-        guard(request, { auth: false }) ?? HttpResponse.json({ status: 'ok', min_app_version: db.minAppVersion }),
+      ({ request }) => versionGuard(request) ?? HttpResponse.json({ status: 'ok', min_app_version: db.minAppVersion }),
+    ),
+
+    // ------------------------------------------------------------------ auth
+    http.post(url('/auth/signup'), async ({ request }) => {
+      const denied = versionGuard(request);
+      if (denied) return denied;
+      const body = (await request.json()) as { email?: string; password?: string; display_name?: string };
+      const email = body.email?.trim() ?? '';
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
+        return err(422, 'validation_failed', 'Invalid email', { email: 'Enter a valid email address' });
+      if (!body.password || body.password.length < 8)
+        return err(422, 'validation_failed', 'Password too short', { password: 'Use at least 8 characters' });
+      if (findByEmail(email)) return err(409, 'email_taken', 'An account with this email already exists');
+      const u = createUser(email, body.password, body.display_name?.trim() || email.split('@')[0]!, 'password');
+      return HttpResponse.json(issueSession(u, true), { status: 201 });
+    }),
+
+    http.post(url('/auth/login'), async ({ request }) => {
+      const denied = versionGuard(request);
+      if (denied) return denied;
+      const { email, password } = (await request.json()) as { email?: string; password?: string };
+      const u = email ? findByEmail(email) : undefined;
+      if (!u || !u.password || u.password !== password)
+        return err(401, 'invalid_credentials', 'Email or password is wrong');
+      return HttpResponse.json(issueSession(u));
+    }),
+
+    ...(['apple', 'google'] as const).map((provider) =>
+      http.post(url(`/auth/${provider}`), async ({ request }) => {
+        const denied = versionGuard(request);
+        if (denied) return denied;
+        const body = (await request.json()) as { identity_token?: string; id_token?: string };
+        if (!(body.identity_token ?? body.id_token)) return err(401, 'invalid_credentials', 'Missing provider token');
+        // The mock trusts any provider token and maps it to one user per provider.
+        const email = `${provider}.user@example.com`;
+        const existing = findByEmail(email);
+        const u = existing ?? createUser(email, '', provider === 'apple' ? 'Apple user' : 'Google user', provider);
+        return HttpResponse.json(issueSession(u, !existing));
+      }),
     ),
 
     http.post(url('/auth/refresh'), async ({ request }) => {
-      const denied = guard(request, { auth: false });
+      const denied = versionGuard(request);
       if (denied) return denied;
       const { refresh_token } = (await request.json()) as { refresh_token?: string };
-      if (!refresh_token || !db.refreshTokens.has(refresh_token)) {
-        db.refreshTokens.clear(); // reuse of a revoked token revokes every session
+      const userId = refresh_token ? db.refreshTokens.get(refresh_token) : undefined;
+      const u = userId ? db.users.get(userId) : undefined;
+      if (!refresh_token || !u) {
+        // Reusing a revoked refresh token revokes every session (theft detection).
+        db.refreshTokens.clear();
         return err(401, 'unauthorized', 'Refresh token revoked');
       }
       db.refreshTokens.delete(refresh_token);
-      tokenSeq += 1;
-      const session = {
-        access_token: `mock-access-${tokenSeq}`,
-        refresh_token: `mock-refresh-${tokenSeq}`,
-        expires_in: 900,
-        user,
-      };
-      db.accessTokens.add(session.access_token);
-      db.refreshTokens.add(session.refresh_token);
-      return HttpResponse.json(session);
+      return HttpResponse.json(issueSession(u));
     }),
 
+    http.post(url('/auth/logout'), async ({ request }) => {
+      const body = (await request.json().catch(() => ({}))) as { refresh_token?: string };
+      if (body.refresh_token) db.refreshTokens.delete(body.refresh_token);
+      const token = request.headers.get('Authorization')?.replace(/^Bearer /, '');
+      if (token) db.accessTokens.delete(token);
+      return new HttpResponse(null, { status: 204 });
+    }),
+
+    http.post(url('/auth/password/forgot'), () => new HttpResponse(null, { status: 204 })),
+
+    http.post(url('/auth/password/reset'), async ({ request }) => {
+      const { token, password } = (await request.json()) as { token?: string; password?: string };
+      if (token !== DEMO_RESET_TOKEN) return err(410, 'link_expired', 'This reset link has expired');
+      if (!password || password.length < 8)
+        return err(422, 'validation_failed', 'Password too short', { password: 'Use at least 8 characters' });
+      const u = findByEmail(DEMO_EMAIL);
+      if (u) u.password = password;
+      return new HttpResponse(null, { status: 204 });
+    }),
+
+    http.post(url('/auth/verify-password'), async ({ request }) => {
+      const u = authed(request);
+      if (isResponse(u)) return u;
+      const { password } = (await request.json()) as { password?: string };
+      if (!u.password || password !== u.password) return err(401, 'invalid_credentials', 'Password is wrong');
+      return new HttpResponse(null, { status: 204 });
+    }),
+
+    // ------------------------------------------------------------------ me
+    http.get(url('/me'), ({ request }) => {
+      const u = authed(request);
+      return isResponse(u) ? u : HttpResponse.json(u.user);
+    }),
+
+    http.patch(url('/me'), async ({ request }) => {
+      const u = authed(request);
+      if (isResponse(u)) return u;
+      const patch = (await request.json()) as UserInput;
+      u.user = { ...u.user, ...patch };
+      return HttpResponse.json(u.user);
+    }),
+
+    http.get(url('/me/settings'), ({ request }) => {
+      const u = authed(request);
+      return isResponse(u) ? u : HttpResponse.json(u.settings);
+    }),
+
+    http.patch(url('/me/settings'), async ({ request }) => {
+      const u = authed(request);
+      if (isResponse(u)) return u;
+      const patch = (await request.json()) as SettingsInput;
+      u.settings = { ...u.settings, ...patch, version: u.settings.version + 1 };
+      return HttpResponse.json(u.settings);
+    }),
+
+    http.post(url('/me/devices'), async ({ request }) => {
+      const u = authed(request);
+      if (isResponse(u)) return u;
+      const device = { ...((await request.json()) as Device), last_seen_at: nowIso() };
+      u.devices = [...u.devices.filter((d) => d.id !== device.id), device];
+      return HttpResponse.json(device);
+    }),
+
+    // ------------------------------------------------------------------ accounts
     http.get(url('/accounts'), ({ request }) => {
-      const denied = guard(request);
-      if (denied) return denied;
-      const live = db.accounts.filter((a) => !a.deleted_at && !a.archived);
-      return HttpResponse.json({ data: live, total: { amount: accountsTotal(live), currency: 'RWF' } });
+      const u = authed(request);
+      return isResponse(u) ? u : HttpResponse.json(listAccounts(u));
     }),
 
+    http.post(url('/accounts'), async ({ request }) => {
+      const u = authed(request);
+      if (isResponse(u)) return u;
+      const input = (await request.json()) as AccountInput;
+      const existing = u.accounts.find((a) => a.id === input.id);
+      if (existing) return HttpResponse.json(existing, { status: 200 });
+      if (!input.id || !input.type || !input.name?.trim() || !input.currency) {
+        return err(422, 'validation_failed', 'id, type, name and currency are required', {
+          ...(!input.name?.trim() ? { name: 'Enter a name' } : {}),
+        });
+      }
+      const opening = input.opening_balance ?? 0;
+      const now = nowIso();
+      const account: Account = {
+        include_in_total: true,
+        archived: false,
+        sort_order: u.accounts.length,
+        opening_date: now.slice(0, 10),
+        ...input,
+        id: input.id,
+        type: input.type,
+        name: input.name.trim(),
+        currency: input.currency,
+        opening_balance: opening,
+        balance: opening,
+        // The mock has no FX rates: other currencies count 1:1 in the base currency.
+        balance_base: opening,
+        last_reported_balance: null,
+        pending_count: 0,
+        created_at: now,
+        updated_at: now,
+        deleted_at: null,
+        version: 1,
+      };
+      u.accounts.push(account);
+      return HttpResponse.json(account, { status: 201 });
+    }),
+
+    http.get(url('/accounts/:id'), ({ request, params }) => {
+      const u = authed(request);
+      if (isResponse(u)) return u;
+      const a = u.accounts.find((x) => x.id === params.id && !x.deleted_at);
+      return a ? HttpResponse.json(a) : err(404, 'not_found', 'Account not found');
+    }),
+
+    http.patch(url('/accounts/:id'), async ({ request, params }) => {
+      const u = authed(request);
+      if (isResponse(u)) return u;
+      const a = u.accounts.find((x) => x.id === params.id && !x.deleted_at);
+      if (!a) return err(404, 'not_found', 'Account not found');
+      const ifMatch = request.headers.get('If-Match');
+      if (ifMatch && Number(ifMatch) !== a.version)
+        return HttpResponse.json(
+          { error: { code: 'version_conflict', message: 'Changed on another device', server_row: a } },
+          { status: 409 },
+        );
+      const patch = (await request.json()) as AccountInput;
+      const delta = patch.opening_balance !== undefined ? patch.opening_balance - (a.opening_balance ?? 0) : 0;
+      Object.assign(a, patch, {
+        id: a.id,
+        balance: a.balance + delta,
+        balance_base: a.balance_base + delta,
+        updated_at: nowIso(),
+        version: a.version + 1,
+      });
+      return HttpResponse.json(a);
+    }),
+
+    http.delete(url('/accounts/:id'), ({ request, params }) => {
+      const u = authed(request);
+      if (isResponse(u)) return u;
+      const a = u.accounts.find((x) => x.id === params.id && !x.deleted_at);
+      if (!a) return err(404, 'not_found', 'Account not found');
+      Object.assign(a, { deleted_at: nowIso() });
+      return new HttpResponse(null, { status: 204 });
+    }),
+
+    // ------------------------------------------------------------------ transactions
     http.get(url('/transactions'), ({ request }) => {
-      const denied = guard(request);
-      if (denied) return denied;
-      const data = [...db.transactions]
+      const u = authed(request);
+      if (isResponse(u)) return u;
+      const data = [...u.transactions]
         .filter((t) => !t.deleted_at)
         .sort((a, b) => (b.occurred_at ?? '').localeCompare(a.occurred_at ?? ''));
       return HttpResponse.json({ data, next_cursor: null });
     }),
 
     http.post(url('/transactions'), async ({ request }) => {
-      const denied = guard(request);
-      if (denied) return denied;
+      const u = authed(request);
+      if (isResponse(u)) return u;
       const input = (await request.json()) as TransactionInput;
-      const existing = db.transactions.find((t) => t.id === input.id);
+      const existing = u.transactions.find((t) => t.id === input.id);
       if (existing) return HttpResponse.json({ transaction: existing }, { status: 200 });
 
-      const acct = db.accounts.find((a) => a.id === input.account_id);
+      const acct = u.accounts.find((a) => a.id === input.account_id);
       if (!input.id || !acct || !input.kind || !input.amount || input.amount < 1) {
-        return HttpResponse.json(
-          {
-            error: {
-              code: 'validation_failed',
-              message: 'id, account_id, kind and amount > 0 are required',
-              fields: { amount: 'must be greater than 0' },
-            },
-          },
-          { status: 422 },
-        );
+        return err(422, 'validation_failed', 'id, account_id, kind and amount > 0 are required', {
+          amount: 'must be greater than 0',
+        });
       }
-      const now = new Date().toISOString();
+      const now = nowIso();
       const t: Transaction = {
         ...input,
         id: input.id,
@@ -140,7 +404,7 @@ export function createHandlers(baseUrl: string, db: MockDb = createMockDb()) {
         deleted_at: null,
         version: 1,
       };
-      db.transactions.push(t);
+      u.transactions.push(t);
       if (t.status === 'confirmed') {
         // The mock plays the server here: it owns the read-only computed fields.
         const amount = t.amount ?? 0;
