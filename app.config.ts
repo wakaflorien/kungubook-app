@@ -19,11 +19,14 @@ const appEnv = (process.env.APP_ENV ?? 'mock') as AppEnv;
 if (!(appEnv in API_URLS)) throw new Error(`APP_ENV must be mock, staging or production (got "${appEnv}")`);
 
 const VERSION = '0.1.0';
+/** Created by `eas init` on 2026-11-18 under the wakaflorien Expo account. */
+const EAS_PROJECT_ID = '40b72ba3-0123-4dc5-9f41-50bc95366243';
 const suffix = appEnv === 'production' ? '' : ` (${appEnv})`;
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: `KunguBook${suffix}`,
+  owner: 'wakaflorien',
   slug: 'kungubook',
   scheme: 'kungubook',
   version: VERSION,
@@ -64,7 +67,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   extra: {
     appEnv,
     apiBaseUrl: process.env.EXPO_PUBLIC_API_URL ?? API_URLS[appEnv],
-    // Set by `eas init` (user step). Left empty so nothing is linked to an Expo account yet.
-    eas: process.env.EAS_PROJECT_ID ? { projectId: process.env.EAS_PROJECT_ID } : undefined,
+    // Links the app to its EAS project (https://expo.dev/accounts/wakaflorien/projects/kungubook).
+    // Not a secret: EAS Build, Update and push notifications read it from here.
+    eas: { projectId: EAS_PROJECT_ID },
   },
 });

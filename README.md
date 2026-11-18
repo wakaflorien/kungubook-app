@@ -108,10 +108,7 @@ scripts/            api-sync, tokens
 
 ## Manual steps
 
-- **Expo account / EAS:**
-  1. Run `npx eas-cli@latest login`, then `npx eas-cli@latest init`. This creates the project and its `projectId`.
-  2. Set the `projectId` as `EAS_PROJECT_ID`, or add it to `app.config.ts`.
-  3. Run `eas build --profile development`.
+- **EAS:** the project is linked: [@wakaflorien/kungubook](https://expo.dev/accounts/wakaflorien/projects/kungubook), with `owner` and `extra.eas.projectId` set in `app.config.ts`. Because the config is dynamic (`app.config.ts`), `eas init` can't write the ID itself; it lives in the `EAS_PROJECT_ID` constant. To build, run `eas build --profile development` (iOS simulator build against the mock).
 - **CI contract check:** once the backend publishes its spec, set the repository variable `API_SPEC_URL`.
 
 ## Troubleshooting
