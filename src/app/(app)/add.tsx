@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Pressable, View } from 'react-native';
-import { useTheme, type ColorName } from '../theme';
-import { Card, Icon, ListRow, Sheet, Text } from '../ui';
+import { useTheme, type ColorName } from '../../theme';
+import { Card, Icon, ListRow, Sheet, Text } from '../../ui';
 
 const KINDS: { label: string; icon: string; color: ColorName }[] = [
   { label: 'Expense', icon: 'north_east', color: 'ink' },

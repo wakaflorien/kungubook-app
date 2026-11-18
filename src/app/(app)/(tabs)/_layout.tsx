@@ -1,6 +1,6 @@
 import { Tabs, useRouter } from 'expo-router';
-import { useTheme } from '../../theme';
-import { TabBar } from '../../ui';
+import { useTheme } from '../../../theme';
+import { TabBar } from '../../../ui';
 
 export default function TabsLayout() {
   const router = useRouter();

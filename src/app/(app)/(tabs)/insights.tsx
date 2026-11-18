@@ -1,4 +1,4 @@
-import { AppBar, EmptyState, Screen } from '../../ui';
+import { AppBar, EmptyState, Screen } from '../../../ui';
 
 export default function InsightsScreen() {
   return (

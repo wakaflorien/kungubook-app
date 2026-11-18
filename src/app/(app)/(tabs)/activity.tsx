@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { AppBar, EmptyState, IconButton, Screen } from '../../ui';
+import { AppBar, EmptyState, IconButton, Screen } from '../../../ui';
 
 export default function ActivityScreen() {
   const router = useRouter();
