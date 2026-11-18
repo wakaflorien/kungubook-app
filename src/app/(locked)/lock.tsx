@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -23,6 +24,7 @@ export default function Lock() {
   const [message, setMessage] = useState<Message>();
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
   const [checking, setChecking] = useState(false);
+  const [wrong, setWrong] = useState(0);
   const [bio, setBio] = useState<BiometricInfo | null>(null);
   const prompted = useRef(false);
 
@@ -69,7 +71,11 @@ export default function Lock() {
     const result = await pinLock.verify(value);
     setChecking(false);
     setPin('');
-    if (result.ok) return unlock();
+    if (result.ok) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      return unlock();
+    }
+    setWrong((n) => n + 1);
     switch (result.reason) {
       case 'wrong':
         if (result.lockedUntil) setLockedUntil(result.lockedUntil);
@@ -114,6 +120,7 @@ export default function Lock() {
         onChange={(v) => void change(v)}
         disabled={checking || !!lockedUntil}
         message={message}
+        shakeKey={wrong}
         biometric={
           bio?.available && biometricsEnabled
             ? { icon: bio.icon, label: `Unlock with ${bio.label}`, onPress: () => void tryBiometrics() }

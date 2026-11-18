@@ -45,7 +45,7 @@ export default function SignIn() {
     <FlowScreen
       title="Sign in"
       onBack={() => router.back()}
-      footer={<Button label="Sign in" block loading={busy} onPress={submit} />}
+      footer={<Button label="Sign in" block loading={busy} disabled={!email.trim() || !password} onPress={submit} />}
     >
       {notice === 'password-reset' ? <Banner title="Password changed" body="Sign in with your new password." /> : null}
       <SocialButtons onSession={done} onError={setFailure} disabled={busy} />

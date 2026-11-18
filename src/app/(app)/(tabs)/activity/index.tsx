@@ -1,10 +1,13 @@
 import { useRouter } from 'expo-router';
-import { AppBar, EmptyState, IconButton, Screen } from '../../../ui';
+import { EmptyState, Screen } from '../../../../ui';
+import { HeaderActions } from '../../../../ui/nativeHeader';
 
+/** Screen 02 · Activity (transactions arrive in M2). */
 export default function ActivityScreen() {
   const router = useRouter();
   return (
-    <Screen tabRoot header={<AppBar title="Activity" action={<IconButton icon="search" label="Search" />} />}>
+    <Screen title="Activity">
+      <HeaderActions right={[{ sf: 'magnifyingglass', icon: 'search', label: 'Search', onPress: () => {} }]} />
       <EmptyState
         icon="receipt_long"
         title="No activity yet"

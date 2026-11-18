@@ -1,11 +1,12 @@
 import { useRouter } from 'expo-router';
-import { Alert, Pressable, View } from 'react-native';
-import { env } from '../../../config/env';
-import { accountSubtitle, accountTile } from '../../../features/accounts/meta';
-import { useAccounts } from '../../../features/accounts/useAccounts';
-import { greetingName, useSession } from '../../../state/session';
-import { useTheme } from '../../../theme';
-import { Amount, Button, Card, EmptyState, Icon, IconButton, ListRow, Screen, SectionHeader, Text } from '../../../ui';
+import { ActionSheetIOS, Alert, Platform, Pressable, View } from 'react-native';
+import { env } from '../../../../config/env';
+import { accountSubtitle, accountTile } from '../../../../features/accounts/meta';
+import { useAccounts } from '../../../../features/accounts/useAccounts';
+import { greetingName, useSession } from '../../../../state/session';
+import { useTheme } from '../../../../theme';
+import { Amount, Button, Card, EmptyState, Icon, ListRow, Screen, SectionHeader, Text } from '../../../../ui';
+import { HeaderActions } from '../../../../ui/nativeHeader';
 
 function greeting(now = new Date()) {
   const h = now.getHours();
@@ -16,69 +17,31 @@ function longDate(now = new Date()) {
   return now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? parts[0]?.[1] ?? '')).toUpperCase();
-}
-
-function Header() {
-  const t = useTheme();
+/** Account menu (Settings arrives in M6): a native action sheet on iOS, a Material dialog on Android. */
+function useAccountMenu() {
   const { profile, signOut } = useSession();
-  const name = greetingName(profile);
-
-  // Settings (60) arrives in M6; until then the avatar offers sign-out (93).
-  const askSignOut = () =>
-    Alert.alert(
-      'Sign out of KunguBook?',
-      `${profile?.email ?? 'You'} will need the password to sign in again. Data saved on this phone is removed.`,
-      [
+  const message = `${profile?.email ?? 'You'} will need the password to sign in again. Data saved on this phone is removed.`;
+  return () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: profile?.name,
+          message,
+          options: ['Sign out', 'Cancel'],
+          destructiveButtonIndex: 0,
+          cancelButtonIndex: 1,
+        },
+        (i) => {
+          if (i === 0) void signOut();
+        },
+      );
+    } else {
+      Alert.alert('Sign out of KunguBook?', message, [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Sign out', style: 'destructive', onPress: () => void signOut() },
-      ],
-    );
-
-  return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: t.space.s3,
-        paddingHorizontal: t.space.s4,
-        paddingVertical: t.space.s2,
-      }}
-    >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Account and sign out"
-        onPress={askSignOut}
-        style={{
-          width: 44,
-          height: 44,
-          borderRadius: t.radius.full,
-          backgroundColor: t.colors.brandSoft,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        {profile ? (
-          <Text variant="row" color="brandStrong" style={{ fontFamily: t.type.title3.fontFamily }}>
-            {initials(profile.name)}
-          </Text>
-        ) : (
-          <Icon name="person" color="brandStrong" />
-        )}
-      </Pressable>
-      <View style={{ flex: 1 }}>
-        <Text variant="sub" color="ink2">
-          {longDate()}
-        </Text>
-        <Text variant="title3" accessibilityRole="header" numberOfLines={1}>
-          {name ? `${greeting()}, ${name}` : greeting()}
-        </Text>
-      </View>
-      <IconButton icon="notifications" label="Notifications" />
-    </View>
-  );
+      ]);
+    }
+  };
 }
 
 function HeroCard({ total, count, currency }: { total: number; count: number; currency: string }) {
@@ -131,8 +94,21 @@ export default function HomeScreen() {
   const router = useRouter();
   const { data, isPending, isError, error, refetch, isRefetching } = useAccounts();
 
+  const profile = useSession((s) => s.profile);
+  const name = greetingName(profile);
+  const openAccountMenu = useAccountMenu();
+
   return (
-    <Screen tabRoot header={<Header />} refreshing={isRefetching} onRefresh={() => void refetch()}>
+    <Screen title={name ? `Hi, ${name}` : 'Home'} refreshing={isRefetching} onRefresh={() => void refetch()}>
+      <HeaderActions
+        left={[
+          { sf: 'person.crop.circle', icon: 'account_circle', label: 'Account and sign out', onPress: openAccountMenu },
+        ]}
+        right={[{ sf: 'bell', icon: 'notifications', label: 'Notifications', onPress: () => {} }]}
+      />
+      <Text variant="sub" color="ink2" style={{ marginBottom: -t.space.s4 }}>
+        {greeting()} · {longDate()}
+      </Text>
       {isPending ? (
         <HeroSkeleton />
       ) : isError && !data ? (

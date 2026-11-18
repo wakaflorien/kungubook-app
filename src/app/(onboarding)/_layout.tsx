@@ -1,13 +1,13 @@
 import { Stack, usePathname, useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { useSession } from '../../state/session';
-import { useTheme } from '../../theme';
+import { useNativeHeaderOptions } from '../../ui/nativeHeader';
 
 export const unstable_settings = { anchor: 'setup/profile' };
 
 /** Onboarding (US-01): steps 2–6 after sign-up, or only the PIN after a sign-in on a new phone. */
 export default function OnboardingLayout() {
-  const t = useTheme();
+  const headerOptions = useNativeHeaderOptions();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -21,10 +21,10 @@ export default function OnboardingLayout() {
   }, []);
 
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: t.colors.bg } }}>
+    <Stack screenOptions={headerOptions}>
       <Stack.Screen name="setup/profile" />
       <Stack.Screen name="setup/accounts" />
-      <Stack.Screen name="setup/add-account" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="setup/add-account" options={{ presentation: 'modal', headerTransparent: false }} />
       <Stack.Screen name="setup/reminders" />
       <Stack.Screen name="setup/capture" />
       <Stack.Screen name="setup/pin" />

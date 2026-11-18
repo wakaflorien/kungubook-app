@@ -1,9 +1,13 @@
 import { Stack } from 'expo-router';
-import { useTheme } from '../../theme';
+import { useNativeHeaderOptions } from '../../ui/nativeHeader';
 
 export const unstable_settings = { anchor: 'lock' };
 
-export default function GroupLayout() {
-  const t = useTheme();
-  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: t.colors.bg } }} />;
+/** Locked: the lock screen (no header), Forgot PIN and New PIN under native headers. */
+export default function LockedLayout() {
+  return (
+    <Stack screenOptions={useNativeHeaderOptions()}>
+      <Stack.Screen name="lock" options={{ headerShown: false, title: 'Locked' }} />
+    </Stack>
+  );
 }

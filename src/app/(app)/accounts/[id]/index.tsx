@@ -4,7 +4,7 @@ import { formatMoney } from '../../../../lib/money';
 import { PROVIDERS, typeLabel } from '../../../../features/accounts/meta';
 import { useAccount, useAccounts } from '../../../../features/accounts/useAccounts';
 import { useTheme } from '../../../../theme';
-import { Amount, AppBar, Banner, Card, EmptyState, IconButton, Screen, SectionHeader, Text } from '../../../../ui';
+import { Amount, Banner, Card, EmptyState, HeaderActions, Screen, SectionHeader, Text } from '../../../../ui';
 
 function Row({ label, value, divider }: { label: string; value: string; divider?: boolean }) {
   const t = useTheme();
@@ -41,7 +41,7 @@ export default function AccountDetail() {
 
   if (!account) {
     return (
-      <Screen header={<AppBar title="Account" variant="sub" onBack={() => router.back()} />}>
+      <Screen title="Account">
         {isError ? <Banner tone="danger" title="Couldn't load this account" body="Pull down to try again." /> : null}
       </Screen>
     );
@@ -51,17 +51,13 @@ export default function AccountDetail() {
     typeof account.last_reported_balance === 'number' && account.last_reported_balance !== account.balance;
 
   return (
-    <Screen
-      header={
-        <AppBar
-          title={account.name ?? 'Account'}
-          variant="sub"
-          onBack={() => router.back()}
-          action={<IconButton icon="edit" label="Edit account" onPress={() => router.push(`/accounts/${id}/edit`)} />}
-        />
-      }
-    >
-      <View style={{ gap: t.space.s2, paddingTop: t.space.s2 }}>
+    <Screen title={account.name ?? 'Account'}>
+      <HeaderActions
+        right={[
+          { sf: 'pencil', icon: 'edit', label: 'Edit account', onPress: () => router.push(`/accounts/${id}/edit`) },
+        ]}
+      />
+      <View style={{ gap: t.space.s2 }}>
         <Text variant="sub" color="ink2">
           Balance{account.number_last ? ` · •••• ${account.number_last}` : ''}
         </Text>

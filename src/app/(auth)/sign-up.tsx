@@ -21,6 +21,7 @@ export default function SignUp() {
   const [busy, setBusy] = useState(false);
 
   const done = (session: Session) => void signedIn(session);
+  const valid = EMAIL.test(email.trim()) && password.length >= 8;
 
   const submit = async () => {
     const next: typeof errors = {};
@@ -46,7 +47,7 @@ export default function SignUp() {
       title="Create account"
       onBack={() => router.back()}
       stepper={{ step: 1, total: 6, label: 'Account' }}
-      footer={<Button label="Continue" block loading={busy} onPress={submit} />}
+      footer={<Button label="Continue" block loading={busy} disabled={!valid} onPress={submit} />}
     >
       <SocialButtons onSession={done} onError={setFailure} disabled={busy} />
       {failure ? <Banner tone="danger" title="Couldn't create your account" body={failure} /> : null}

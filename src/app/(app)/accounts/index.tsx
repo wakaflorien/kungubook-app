@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { accountSubtitle, accountTile } from '../../../features/accounts/meta';
 import { useAccounts } from '../../../features/accounts/useAccounts';
 import { useTheme } from '../../../theme';
-import { Amount, AppBar, Badge, Card, EmptyState, IconButton, ListRow, Screen, Text } from '../../../ui';
+import { Amount, Badge, Card, EmptyState, HeaderActions, ListRow, Screen, Text } from '../../../ui';
 
 /** Screen 31 · Accounts (US-04). */
 export default function AccountsScreen() {
@@ -11,24 +11,17 @@ export default function AccountsScreen() {
   const router = useRouter();
   const { data, refetch, isRefetching } = useAccounts();
   const accounts = data?.data ?? [];
+  const totalCount = accounts.filter((a) => a.include_in_total).length;
 
   return (
-    <Screen
-      header={
-        <AppBar
-          title="Accounts"
-          variant="sub"
-          onBack={() => router.back()}
-          action={<IconButton icon="add" label="Add account" onPress={() => router.push('/accounts/new')} />}
-        />
-      }
-      refreshing={isRefetching}
-      onRefresh={() => void refetch()}
-    >
+    <Screen title="Accounts" refreshing={isRefetching} onRefresh={() => void refetch()}>
+      <HeaderActions
+        right={[{ sf: 'plus', icon: 'add', label: 'Add account', onPress: () => router.push('/accounts/new') }]}
+      />
       {data ? (
-        <View style={{ gap: t.space.s2, paddingTop: t.space.s2 }}>
+        <View style={{ gap: t.space.s2 }}>
           <Text variant="sub" color="ink2">
-            Total in {accounts.filter((a) => a.include_in_total).length} accounts
+            Total in {totalCount} {totalCount === 1 ? 'account' : 'accounts'}
           </Text>
           <Amount value={data.total.amount} currency={data.total.currency} variant="hero" />
         </View>
