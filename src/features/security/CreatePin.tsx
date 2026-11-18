@@ -1,25 +1,29 @@
+import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import { PIN_LENGTH } from '../../lib/security/pin-lock';
 import { biometricInfo, type BiometricInfo } from '../../platform/biometrics';
 import { useTheme } from '../../theme';
-import { Button, FlowScreen, Icon, PinPad, Switch, Text } from '../../ui';
+import { FlowScreen, Icon, PinPad, Switch, Text } from '../../ui';
 import type { StepperProps } from '../../ui/FlowScreen';
 
 export interface CreatePinProps {
   title: string;
   stepper?: StepperProps;
-  onBack?: () => void;
-  finishLabel: string;
+  /** Shows a ✕ that calls this (e.g. cancel a sign-in). Otherwise the native back button is used. */
+  onClose?: () => void;
   onFinish: (pin: string, biometrics: boolean) => Promise<void>;
 }
 
-/** Screen 26 · Create a 4-digit PIN, enter it twice, optionally turn on Face ID / fingerprint. */
-export function CreatePin({ title, stepper, onBack, finishLabel, onFinish }: CreatePinProps) {
+/**
+ * Screen 26 · Create a 4-digit PIN. Like the system passcode screens: enter it, enter it again,
+ * and it finishes on its own when they match (no confirm button). A mismatch shakes with a haptic.
+ */
+export function CreatePin({ title, stepper, onClose, onFinish }: CreatePinProps) {
   const t = useTheme();
   const [first, setFirst] = useState<string | null>(null);
   const [entry, setEntry] = useState('');
-  const [mismatch, setMismatch] = useState(false);
+  const [mismatch, setMismatch] = useState(0);
   const [bio, setBio] = useState<BiometricInfo | null>(null);
   const [useBio, setUseBio] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -30,47 +34,38 @@ export function CreatePin({ title, stepper, onBack, finishLabel, onFinish }: Cre
       .catch(() => setBio(null));
   }, []);
 
-  const confirmed = first !== null && entry === first;
-
-  const change = (value: string) => {
-    setMismatch(false);
+  const change = async (value: string) => {
     setEntry(value);
     if (value.length < PIN_LENGTH) return;
     if (first === null) {
       setFirst(value);
       setEntry('');
-    } else if (value !== first) {
-      setMismatch(true);
+      return;
+    }
+    if (value !== first) {
+      setMismatch((n) => n + 1);
       setFirst(null);
       setEntry('');
+      return;
     }
-  };
-
-  const finish = async () => {
-    if (!confirmed) return;
     setBusy(true);
     try {
       await onFinish(first, !!bio?.available && useBio);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } finally {
       setBusy(false);
     }
   };
 
   const heading = first === null ? `Create a ${PIN_LENGTH}-digit PIN` : 'Enter it again';
-  const message = mismatch
-    ? { text: "Those PINs don't match. Start again.", tone: 'danger' as const }
-    : confirmed
-      ? { text: 'PIN confirmed.', tone: 'ink2' as const }
+  const message = busy
+    ? { text: 'Saving your PIN…', tone: 'ink2' as const }
+    : mismatch && first === null
+      ? { text: "Those PINs don't match. Start again.", tone: 'danger' as const }
       : undefined;
 
   return (
-    <FlowScreen
-      title={title}
-      onBack={onBack}
-      stepper={stepper}
-      scroll
-      footer={<Button label={finishLabel} block disabled={!confirmed} loading={busy} onPress={finish} />}
-    >
+    <FlowScreen title={title} stepper={stepper} onBack={onClose} backIcon={onClose ? 'close' : 'back'}>
       <View style={{ alignItems: 'center', gap: t.space.s2 }}>
         <Text variant="title2" accessibilityRole="header" accessibilityLiveRegion="polite">
           {heading}
@@ -80,7 +75,8 @@ export function CreatePin({ title, stepper, onBack, finishLabel, onFinish }: Cre
           {bio?.available ? ` ${bio.label[0]!.toUpperCase()}${bio.label.slice(1)} can unlock it for you.` : ''}
         </Text>
       </View>
-      <PinPad value={entry} onChange={change} message={message} disabled={busy || confirmed} />
+      <PinPad value={entry} onChange={(v) => void change(v)} message={message} shakeKey={mismatch} disabled={busy} />
+      {busy ? <ActivityIndicator color={t.colors.brand} /> : null}
       {bio?.available ? (
         <View
           style={{
