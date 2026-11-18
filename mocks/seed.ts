@@ -1,0 +1,154 @@
+/**
+ * Demo data for MSW and tests: the fictional user Keza Uwase from design/sample-data.md.
+ * IDs match the examples in docs/openapi.yaml, so Prism and MSW agree. "Today" is Tue 17 Nov 2026.
+ */
+import type { Account, Transaction, components } from '../src/api';
+
+type User = components['schemas']['User'];
+
+export const TODAY = '2026-11-17';
+
+export const user: User = {
+  id: '0193a1b2-0000-7000-8000-000000000001',
+  email: 'keza@example.com',
+  display_name: 'Keza Uwase',
+  country: 'RW',
+  base_currency: 'RWF',
+  timezone: 'Africa/Kigali',
+  week_starts_on: 1,
+  currencies: ['USD'],
+  sign_in_methods: ['password'],
+  email_verified: true,
+};
+
+/** Account IDs (the generated `Account.id` is optional because of how the spec composes allOf). */
+const accountId = (n: number) => `0193a1b2-0000-7000-8000-000000000a0${n}`;
+
+const meta = (updated_at: string, version: number) => ({
+  created_at: '2026-01-01T08:00:00Z',
+  updated_at,
+  deleted_at: null,
+  version,
+});
+
+const account = (
+  n: number,
+  a: Pick<Account, 'type' | 'name' | 'provider' | 'balance'> & { number_last?: string; reported?: number },
+  updated_at: string,
+  version: number,
+): Account => ({
+  id: accountId(n),
+  type: a.type,
+  name: a.name,
+  provider: a.provider,
+  ...(a.number_last ? { number_last: a.number_last } : {}),
+  currency: 'RWF',
+  opening_balance: 0,
+  opening_date: '2026-01-01',
+  include_in_total: true,
+  balance: a.balance,
+  balance_base: a.balance,
+  last_reported_balance: a.reported ?? (a.type === 'mobile_money' ? a.balance : null),
+  sort_order: n - 1,
+  ...meta(updated_at, version),
+});
+
+/** 5 accounts, total RWF 3,480,000. Airtel shows the mismatch example (last SMS said 150,000). */
+export const accounts: Account[] = [
+  account(
+    1,
+    { type: 'mobile_money', name: 'MTN MoMo', provider: 'mtn_momo', number_last: '214', balance: 412_400 },
+    '2026-11-17T09:42:10Z',
+    14,
+  ),
+  account(
+    2,
+    {
+      type: 'mobile_money',
+      name: 'Airtel Money',
+      provider: 'airtel_money',
+      number_last: '908',
+      balance: 145_000,
+      reported: 150_000,
+    },
+    '2026-11-16T18:10:00Z',
+    9,
+  ),
+  account(
+    3,
+    { type: 'bank', name: 'BK Current', provider: 'bk', number_last: '5521', balance: 1_240_000 },
+    '2026-11-17T07:00:00Z',
+    22,
+  ),
+  account(
+    4,
+    { type: 'bank', name: 'Equity Savings', provider: 'equity', number_last: '0377', balance: 1_620_000 },
+    '2026-11-01T07:00:00Z',
+    6,
+  ),
+  account(5, { type: 'cash', name: 'Cash', provider: 'cash', balance: 62_600 }, '2026-11-15T12:00:00Z', 30),
+];
+
+const [momo, airtel, bk, cash] = [accountId(1), accountId(2), accountId(3), accountId(5)];
+
+const txn = (
+  n: number,
+  t: {
+    account_id: string;
+    kind: 'in' | 'out';
+    amount: number;
+    occurred_at: string;
+    source: Transaction['source'];
+    counterparty_text: string;
+    note?: string;
+  },
+): Transaction => ({
+  id: `0193a1b2-0000-7000-8000-000000000b${String(n).padStart(2, '0')}`,
+  currency: 'RWF',
+  amount_base: t.amount,
+  fee: 0,
+  status: 'confirmed',
+  ...t,
+  ...meta(t.occurred_at, 1),
+});
+
+/** The "Recent" list on Home (screen 01). */
+export const transactions: Transaction[] = [
+  txn(1, {
+    account_id: bk,
+    kind: 'in',
+    amount: 650_000,
+    occurred_at: '2026-11-16T10:05:00Z',
+    source: 'import',
+    counterparty_text: 'Inyange Industries',
+    note: 'Consulting payout',
+  }),
+  txn(2, {
+    account_id: cash,
+    kind: 'out',
+    amount: 22_000,
+    occurred_at: '2026-11-16T07:30:00Z',
+    source: 'manual',
+    counterparty_text: 'SP Nyarutarama',
+  }),
+  txn(3, {
+    account_id: airtel,
+    kind: 'in',
+    amount: 30_000,
+    occurred_at: '2026-11-15T15:12:00Z',
+    source: 'sms',
+    counterparty_text: 'Aline Umutoni',
+    note: 'Loan repayment',
+  }),
+  txn(4, {
+    account_id: momo,
+    kind: 'out',
+    amount: 18_500,
+    occurred_at: '2026-11-17T09:42:10Z',
+    source: 'shortcut',
+    counterparty_text: 'Kigali Grocers',
+  }),
+];
+
+export const accountsTotal = (list: Account[]) =>
+  list.filter((a) => a.include_in_total && !a.deleted_at).reduce((sum, a) => sum + a.balance_base, 0);

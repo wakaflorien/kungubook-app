@@ -1,0 +1,7 @@
+node_modules
+.expo
+dist
+coverage
+pnpm-lock.yaml
+src/api/schema.d.ts
+src/api/openapi.yaml

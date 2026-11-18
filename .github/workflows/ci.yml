@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint, typecheck, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  contract:
+    name: API contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # The generated client must match the committed spec copy.
+      - name: Generated client is up to date
+        run: pnpm api:sync --check
+
+      # Once the backend publishes its spec, set the repository variable API_SPEC_URL
+      # (e.g. https://staging-api.kungubook.app/v1/openapi.json). Until then this step is skipped.
+      - name: No breaking changes between the app's spec and the API's
+        if: ${{ vars.API_SPEC_URL != '' }}
+        uses: oasdiff/oasdiff-action/breaking@main
+        with:
+          base: src/api/openapi.yaml
+          revision: ${{ vars.API_SPEC_URL }}
+          fail-on: ERR
