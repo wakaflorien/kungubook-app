@@ -54,7 +54,7 @@ Mock-only test values: the password-reset link token is `mock-reset-token` (open
 ## Security model (M1)
 
 - **Tokens** live in the Keychain / Keystore (`expo-secure-store`, this device only). Every request carries the bearer token; on `401 token_expired` the client refreshes once (refresh tokens rotate) and retries; if the refresh is refused the app signs out and wipes local data.
-- **PIN**: 4 digits, stored only as a salted argon2id hash in secure storage. 5 wrong PINs → 30 s wait; 10 → the account password is required (Forgot PIN). Biometrics (Face ID / fingerprint) can unlock instead.
+- **PIN**: 4 digits, stored only as a salted, iterated SHA-256 hash (native digest, ~0.6–0.8 s to set or check in debug builds) in secure storage. 5 wrong PINs → 30 s wait; 10 → the account password is required (Forgot PIN). Biometrics (Face ID / fingerprint) can unlock instead.
 - **Auto-lock** after 1 minute in the background and on every cold start; the app-switcher snapshot is covered.
 - **Local cache**: SQLite encrypted with SQLCipher, key in secure storage. Signing out deletes the database, its key, the PIN and the tokens.
 
@@ -92,9 +92,11 @@ EXPO_PUBLIC_API_URL=http://192.168.1.10:4010 pnpm start
 ## Layout
 
 ```
-src/app/            routes: (auth) welcome·sign-in·sign-up·forgot/reset password · (onboarding) setup/* ·
+src/app/            routes (native tabs + native stack headers; see docs/04 §4.1): (auth) welcome·sign-in·sign-up·forgot/reset password · (onboarding) setup/* ·
                     (locked) lock·forgot-pin·new-pin · (app) tabs, + sheet, accounts/*
-src/ui/             design-system components (colours only via useTheme(); hex literals fail lint)
+src/ui/             design-system components (colours only via useTheme(); hex literals fail lint);
+                    Switch/Segmented/Select/Slider/ProgressBar have .ios/.android files using native
+                    SwiftUI / Jetpack Compose controls (@expo/ui); nativeHeader.tsx = header options + toolbar
 src/theme/          generated tokens + ThemeProvider/useTheme()
 src/lib/            pure TS, unit-tested: money, auth (service, token store), security (PIN lock, auto-lock), id
 src/api/            spec copy, generated types, openapi-fetch wrapper (auth, refresh, X-App-Version, errors, 426)
@@ -144,7 +146,7 @@ These need your accounts or a real device, so they weren't done here:
 
 ## Known issues
 
-- **PIN hashing is slow in debug builds.** argon2id runs in JavaScript: setting or checking a PIN took ~1–3 s on the iOS simulator and ~6 s on the Android emulator in Expo Go (debug). Release builds are faster but unmeasured. Follow-up: a native argon2 module in the dev build; records store their parameters, so existing PINs keep working.
+- **Expo Go shows the full native look** on the iOS 27 simulator, including the Liquid Glass tab bar with + as a separate prominent item. Older iOS versions show a standard tab bar with + as the 5th tab.
 - **Dev-only navigation notice** (`ROUTE_NAMES_CHANGED … not handled`) can appear when a protected group mounts after sign-in or unlock. Each group routes itself once mounted; the notice doesn't exist in production builds.
 
 ## Troubleshooting
