@@ -1639,10 +1639,25 @@ export interface components {
         /** @enum {string} */
         SyncTable: "accounts" | "categories" | "contacts" | "transactions" | "rules" | "loans" | "loan_installments" | "loan_payments" | "budgets" | "notifications" | "user_settings" | "projects" | "goals" | "goal_contributions" | "assets";
         SyncPull: {
-            /** @description Rows per table, deleted rows included (`deleted_at` set). Same shapes as the REST resources. */
+            /**
+             * @description Rows per table, deleted rows included (`deleted_at` set). Same shapes as the REST resources.
+             * @example {
+             *       "accounts": [
+             *         {
+             *           "id": "0193a1b2-0000-7000-8000-000000000a01",
+             *           "name": "MTN MoMo",
+             *           "balance": 412400,
+             *           "version": 14,
+             *           "deleted_at": null
+             *         }
+             *       ],
+             *       "transactions": []
+             *     }
+             */
             changes: {
                 [key: string]: Record<string, never>[];
             };
+            /** @example c_0193a1b2-000014 */
             cursor: string;
             has_more: boolean;
         };
@@ -2171,6 +2186,7 @@ export interface components {
              * @default false
              */
             rollover?: boolean;
+            /** @example 2026-11 */
             starts_month?: string;
         };
         Budget: components["schemas"]["BudgetInput"] & components["schemas"]["RowMeta"] & Record<string, never>;
