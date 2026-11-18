@@ -19,6 +19,9 @@ const appEnv = (process.env.APP_ENV ?? 'mock') as AppEnv;
 if (!(appEnv in API_URLS)) throw new Error(`APP_ENV must be mock, staging or production (got "${appEnv}")`);
 
 const VERSION = '0.1.0';
+const FACE_ID_REASON = 'KunguBook uses Face ID to unlock the app instead of your PIN.';
+/** Reversed iOS client ID, e.g. com.googleusercontent.apps.123-abc. */
+const GOOGLE_IOS_URL_SCHEME = process.env.GOOGLE_IOS_URL_SCHEME;
 /** Created by `eas init` on 2026-11-18 under the wakaflorien Expo account. */
 const EAS_PROJECT_ID = '40b72ba3-0123-4dc5-9f41-50bc95366243';
 const suffix = appEnv === 'production' ? '' : ` (${appEnv})`;
@@ -36,6 +39,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     bundleIdentifier: 'app.kungubook.mobile',
     supportsTablet: false,
+    usesAppleSignIn: true,
     infoPlist: {
       // The mock server is plain HTTP on localhost.
       NSAppTransportSecurity: appEnv === 'mock' ? { NSAllowsLocalNetworking: true } : undefined,
@@ -63,6 +67,16 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         dark: { backgroundColor: '#0A0F14' },
       },
     ],
+    // Encrypted local cache (TRD §8). Needs a dev or store build; Expo Go uses plain SQLite.
+    ['expo-sqlite', { useSQLCipher: true }],
+    ['expo-secure-store', { faceIDPermission: FACE_ID_REASON }],
+    ['expo-local-authentication', { faceIDPermission: FACE_ID_REASON }],
+    'expo-apple-authentication',
+    ['expo-notifications', { color: '#047857' }],
+    // Google sign-in: added once the OAuth client exists (README → Sign in with Google).
+    ...(GOOGLE_IOS_URL_SCHEME
+      ? [['@react-native-google-signin/google-signin', { iosUrlScheme: GOOGLE_IOS_URL_SCHEME }] as [string, object]]
+      : []),
   ],
   extra: {
     appEnv,
