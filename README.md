@@ -16,11 +16,12 @@ my-finance/                  parent folder (not a repo)
 
 ## Status
 
-| Milestone                       | State                                                                                                                                                   |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **M0 · Foundations**            | Done. Tab shell and + sheet, UI kit, theme, API client, mocks and CI are in. Home shows the accounts total from the mock. Checked on the iOS simulator. |
-| M1 · Auth, onboarding, accounts | Next                                                                                                                                                    |
-| M2–M8                           | See `../docs/06-implementation-plan.md`                                                                                                                 |
+| Milestone                           | State                                                                                                                                                                                                                                                               |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **M0 · Foundations**                | Done. Tab shell and + sheet, UI kit, theme, API client, mocks and CI are in. Home shows the accounts total from the mock. Checked on the iOS simulator.                                                                                                             |
+| **M1 · Auth, onboarding, accounts** | Done against the mock. Sign-up/in (email, Apple, Google code paths), password reset, onboarding steps 2–6, PIN + biometrics, auto-lock, encrypted cache, device registration, accounts list/detail/add/edit. Checked on the iOS simulator and the Android emulator. |
+| M2 · Transactions & sync            | Next                                                                                                                                                                                                                                                                |
+| M2–M8                               | See `../docs/06-implementation-plan.md`                                                                                                                                                                                                                             |
 
 ## Prerequisites
 
@@ -32,11 +33,30 @@ my-finance/                  parent folder (not a repo)
 
 ```bash
 pnpm install
-pnpm mock          # terminal 1: Prism on http://localhost:4010, serving src/api/openapi.yaml
+pnpm mock          # terminal 1: mock API on http://localhost:4010
 pnpm ios           # terminal 2: or `pnpm start`, then press i / a
 ```
 
-Home shows **RWF 3,480,000**, the accounts total that `GET /accounts` returns for the demo user Keza Uwase. If the mock isn't running, Home shows "Couldn't load your balances" with a _Try again_ button.
+The app opens on Welcome. **Create account** runs the full onboarding (6 steps); **I already have an account** signs in.
+The seeded demo user is `keza@example.com` / `kungubook-demo` (fictional, mock only); Home then shows **RWF 3,480,000** from `GET /accounts`.
+
+### The mock API
+
+`pnpm mock` runs two layers (scripts/mock-server.ts):
+
+| Port | What answers                                                                                                                                                                                                                                                                                     |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 4010 | **Stateful** MSW handlers from `mocks/handlers.ts`: auth (sign-up, sign-in, Apple/Google, refresh with rotation, logout, password reset, verify password), `/me`, `/me/settings`, `/me/devices`, accounts and transactions. New users, accounts and edits are remembered until the server stops. |
+| 4011 | Prism on `src/api/openapi.yaml` for every other route (loans, net worth, …), returning the spec's examples.                                                                                                                                                                                      |
+
+Mock-only test values: the password-reset link token is `mock-reset-token` (open `kungubook://reset-password?token=mock-reset-token`); Apple and Google tokens are accepted as-is. `pnpm mock:prism` runs plain Prism on 4010 instead.
+
+## Security model (M1)
+
+- **Tokens** live in the Keychain / Keystore (`expo-secure-store`, this device only). Every request carries the bearer token; on `401 token_expired` the client refreshes once (refresh tokens rotate) and retries; if the refresh is refused the app signs out and wipes local data.
+- **PIN**: 4 digits, stored only as a salted argon2id hash in secure storage. 5 wrong PINs → 30 s wait; 10 → the account password is required (Forgot PIN). Biometrics (Face ID / fingerprint) can unlock instead.
+- **Auto-lock** after 1 minute in the background and on every cold start; the app-switcher snapshot is covered.
+- **Local cache**: SQLite encrypted with SQLCipher, key in secure storage. Signing out deletes the database, its key, the PIN and the tokens.
 
 ## Scripts
 
@@ -72,15 +92,18 @@ EXPO_PUBLIC_API_URL=http://192.168.1.10:4010 pnpm start
 ## Layout
 
 ```
-src/app/            routes: (tabs)/index · activity · money · insights, add (+ sheet)
+src/app/            routes: (auth) welcome·sign-in·sign-up·forgot/reset password · (onboarding) setup/* ·
+                    (locked) lock·forgot-pin·new-pin · (app) tabs, + sheet, accounts/*
 src/ui/             design-system components (colours only via useTheme(); hex literals fail lint)
 src/theme/          generated tokens + ThemeProvider/useTheme()
-src/lib/money/      formatMoney, parseMoney, amortize (pure TS, unit-tested)
+src/lib/            pure TS, unit-tested: money, auth (service, token store), security (PIN lock, auto-lock), id
 src/api/            spec copy, generated types, openapi-fetch wrapper (auth, refresh, X-App-Version, errors, 426)
-src/config/         env (APP_ENV → base URL) and the app's API client instance
-src/features/       feature hooks (accounts …)
-mocks/              seed (Keza Uwase) + stateful MSW handlers for tests
-scripts/            api-sync, tokens
+src/platform/       native adapters: secure store, biometrics, encrypted SQLite cache, push, Apple/Google sign-in
+src/state/          session state machine (signedOut → onboarding → locked ⇄ ready)
+src/config/         env (APP_ENV → base URL) and the app's services (API client, auth, PIN lock, cache)
+src/features/       screens' building blocks and hooks: accounts, auth, me, security
+mocks/              seed (Keza Uwase) + stateful MSW handlers (tests and `pnpm mock`)
+scripts/            api-sync, tokens, mock-server
 ```
 
 `src/lib`, `src/theme/tokens.ts` and `src/api` import nothing from React Native, so they can move into a shared package when the web repo starts.
@@ -108,8 +131,21 @@ scripts/            api-sync, tokens
 
 ## Manual steps
 
+These need your accounts or a real device, so they weren't done here:
+
+- **Development build** (needed for SQLCipher, Google sign-in, push and Face ID prompts in your own app identity): `eas build --profile development --platform ios` (simulator) or `--platform android`, then `pnpm start` and open it. Expo Go works for everything else.
+- **Sign in with Apple**: enable the _Sign in with Apple_ capability for `app.kungubook.mobile` in your Apple Developer account (EAS can do it on the first build). In Expo Go it signs in with Expo Go's identity, so the API must accept that audience only in development.
+- **Sign in with Google**: create OAuth client IDs in Google Cloud (iOS + Web; Android uses the SHA-1 of the signing key), then set `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` and `GOOGLE_IOS_URL_SCHEME` (the reversed iOS client ID) as EAS environment variables. Until then the Google button says it isn't set up.
+- **Push notifications**: on a physical phone with a dev build, accept the permission on step 4; the app registers its Expo push token with `POST /me/devices`. Simulators and Expo Go on Android register the device without a token.
+- **Device test**: run the M1 done-check on a real iPhone and Android phone (sign up, add 3 accounts, set a PIN, kill the app, unlock) and time the unlock (see Known issues).
+
 - **EAS:** the project is linked: [@wakaflorien/kungubook](https://expo.dev/accounts/wakaflorien/projects/kungubook), with `owner` and `extra.eas.projectId` set in `app.config.ts`. Because the config is dynamic (`app.config.ts`), `eas init` can't write the ID itself; it lives in the `EAS_PROJECT_ID` constant. To build, run `eas build --profile development` (iOS simulator build against the mock).
 - **CI contract check:** once the backend publishes its spec, set the repository variable `API_SPEC_URL`.
+
+## Known issues
+
+- **PIN hashing is slow in debug builds.** argon2id runs in JavaScript: setting or checking a PIN took ~1–3 s on the iOS simulator and ~6 s on the Android emulator in Expo Go (debug). Release builds are faster but unmeasured. Follow-up: a native argon2 module in the dev build; records store their parameters, so existing PINs keep working.
+- **Dev-only navigation notice** (`ROUTE_NAMES_CHANGED … not handled`) can appear when a protected group mounts after sign-in or unlock. Each group routes itself once mounted; the notice doesn't exist in production builds.
 
 ## Troubleshooting
 
