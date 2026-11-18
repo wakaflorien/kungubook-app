@@ -45,7 +45,8 @@ export interface ApiClientOptions {
 export type KunguBookClient = Client<paths>;
 
 /** Routes that never carry the bearer token. */
-const isPublicPath = (pathname: string) => pathname.endsWith('/health') || /\/auth\/(?!logout\b)/.test(pathname);
+const isPublicPath = (pathname: string) =>
+  /\/(health|auth\/(signup|login|apple|google|refresh|password\/forgot|password\/reset))$/.test(pathname);
 
 async function readErrorCode(res: Response): Promise<string | undefined> {
   try {
