@@ -3,8 +3,8 @@ import { memoryStore } from '../storage';
 import { createAutoLock, initialStatus } from './auto-lock';
 import { ATTEMPTS_PER_ROUND, FIRST_WAIT_MS, MAX_FAILED_ATTEMPTS, createPinLock, isValidPin } from './pin-lock';
 
-/** Cheap argon2 settings so the tests stay fast; production uses DEFAULT_HASH_PARAMS. */
-const FAST = { t: 1, m: 64, p: 1 };
+/** Few iterations so the tests stay fast; production uses ITERATIONS. */
+const FAST = 10;
 
 function setup() {
   let clock = 1_000_000;
@@ -12,7 +12,7 @@ function setup() {
   let seed = 0;
   const pin = createPinLock(kv, {
     now: () => clock,
-    params: FAST,
+    iterations: FAST,
     randomBytes: (n) => new Uint8Array(n).map(() => (seed += 7) % 256),
   });
   return { kv, pin, advance: (ms: number) => (clock += ms) };
@@ -32,7 +32,7 @@ describe('PIN lock', () => {
     expect(await pin.hasPin()).toBe(true);
     const stored = Object.values(kv.dump()).join(' ');
     expect(stored).not.toContain('2580');
-    expect(JSON.parse(kv.dump()['security.pin']!)).toMatchObject({ v: 1, params: FAST });
+    expect(JSON.parse(kv.dump()['security.pin']!)).toMatchObject({ v: 2, alg: 'sha256-iter', iterations: FAST });
     await expect(pin.setPin('12')).rejects.toThrow(RangeError);
   });
 
@@ -86,11 +86,32 @@ describe('PIN lock', () => {
     expect(await pin.verify('1357')).toEqual({ ok: true });
   });
 
+  it('still verifies PINs saved with the earlier argon2id scheme', async () => {
+    const { hexToBytes } = await import('@noble/hashes/utils.js');
+    const { argon2id } = await import('@noble/hashes/argon2.js');
+    const { bytesToHex } = await import('@noble/hashes/utils.js');
+    const salt = '0102030405060708090a0b0c0d0e0f10';
+    const params = { t: 1, m: 64, p: 1 };
+    const hash = bytesToHex(argon2id('2580', hexToBytes(salt), { ...params, dkLen: 32 }));
+    const kv = memoryStore({ 'security.pin': JSON.stringify({ v: 1, salt, hash, params }) });
+    const pin = createPinLock(kv);
+    expect(await pin.verify('0000')).toMatchObject({ ok: false, reason: 'wrong' });
+    expect(await pin.verify('2580')).toEqual({ ok: true });
+  });
+
+  it('hashes the same way with the native digest and with WebCrypto', async () => {
+    const { hashPin } = await import('./pin-lock');
+    const { sha256 } = await import('@noble/hashes/sha2.js');
+    const salt = new Uint8Array(16).fill(9);
+    const viaJs = await hashPin('2580', salt, 50, async (d) => sha256(d));
+    expect(await hashPin('2580', salt, 50)).toBe(viaJs);
+  });
+
   it('counts wrong attempts across app restarts', async () => {
     const { pin, kv } = setup();
     await pin.setPin('2580');
     await pin.verify('0000');
-    const restarted = createPinLock(kv, { params: FAST });
+    const restarted = createPinLock(kv, { iterations: FAST });
     expect(await restarted.verify('0000')).toMatchObject({ reason: 'wrong', attemptsLeft: 3 });
   });
 

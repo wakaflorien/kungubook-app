@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
-import { Pressable, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, Animated, Pressable, View } from 'react-native';
 import { useTheme } from '../theme';
 import { Icon } from './Icon';
 import { Text } from './Text';
@@ -11,28 +12,52 @@ export interface PinPadProps {
   /** Biometric key in the bottom-left (Face ID / fingerprint). */
   biometric?: { icon: string; label: string; onPress: () => void };
   disabled?: boolean;
-  /** Shakes nothing; just announces. Shown under the dots. */
+  /** Shown under the dots and announced. */
   message?: { text: string; tone: 'ink2' | 'danger' };
+  /** Change this number to shake the dots with an error haptic (wrong or mismatched PIN). */
+  shakeKey?: number;
 }
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const;
 
 /** PIN dots and a 3×4 keypad with 64px round keys (screens 26, 27). */
-export function PinPad({ value, length = 4, onChange, biometric, disabled, message }: PinPadProps) {
+export function PinPad({ value, length = 4, onChange, biometric, disabled, message, shakeKey }: PinPadProps) {
   const t = useTheme();
+  const [shake] = useState(() => new Animated.Value(0));
+
+  useEffect(() => {
+    if (!shakeKey) return;
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    void AccessibilityInfo.isReduceMotionEnabled().then((reduce) => {
+      if (reduce) return;
+      shake.setValue(0);
+      Animated.sequence(
+        [10, -10, 8, -8, 4, 0].map((x) => Animated.timing(shake, { toValue: x, duration: 50, useNativeDriver: true })),
+      ).start();
+    });
+  }, [shakeKey, shake]);
+
   // Taps can arrive faster than re-renders; build each new value from the latest one, not a stale prop.
   const latest = useRef(value);
   useEffect(() => {
     latest.current = value;
   }, [value]);
   const update = (next: string) => {
-    latest.current = next;
+    // A full PIN is always consumed by the screen (checked or stored, then cleared), so start the next
+    // entry from empty right away instead of waiting for the cleared value to come back as a prop.
+    latest.current = next.length >= length ? '' : next;
     onChange(next);
   };
   const press = (digit: string) => {
-    if (!disabled && latest.current.length < length) update(latest.current + digit);
+    if (disabled || latest.current.length >= length) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    update(latest.current + digit);
   };
-  const erase = () => update(latest.current.slice(0, -1));
+  const erase = () => {
+    if (!latest.current) return;
+    void Haptics.selectionAsync();
+    update(latest.current.slice(0, -1));
+  };
 
   const key = (label: string) => (
     <Pressable
@@ -73,10 +98,16 @@ export function PinPad({ value, length = 4, onChange, biometric, disabled, messa
 
   return (
     <View style={{ alignItems: 'center', gap: t.space.s6 }}>
-      <View
+      <Animated.View
         accessible
         accessibilityLabel={`${value.length} of ${length} digits entered`}
-        style={{ flexDirection: 'row', gap: t.space.s4, height: 16, alignItems: 'center' }}
+        style={{
+          flexDirection: 'row',
+          gap: t.space.s4,
+          height: 16,
+          alignItems: 'center',
+          transform: [{ translateX: shake }],
+        }}
       >
         {Array.from({ length }, (_, i) => (
           <View
@@ -91,7 +122,7 @@ export function PinPad({ value, length = 4, onChange, biometric, disabled, messa
             }}
           />
         ))}
-      </View>
+      </Animated.View>
       <Text
         variant="sub"
         color={message?.tone ?? 'ink2'}

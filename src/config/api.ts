@@ -1,4 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
+import { CryptoDigestAlgorithm, digest } from 'expo-crypto';
 import { ApiError } from '../api';
 import { createApiClient } from '../api/client';
 import { createAuthService } from '../lib/auth/auth-service';
@@ -11,7 +12,10 @@ import { env } from './env';
 /** App-wide services. Screens use these through hooks, never `fetch` directly. */
 export const kv = secureStore;
 export const tokenStore = persistentTokenStore(kv);
-export const pinLock = createPinLock(kv);
+// Native SHA-256 (off the JS thread) for PIN hashing.
+export const pinLock = createPinLock(kv, {
+  digest: async (data) => new Uint8Array(await digest(CryptoDigestAlgorithm.SHA256, data as Uint8Array<ArrayBuffer>)),
+});
 export const cache = createCache(kv);
 
 /** Set by the session store: what to do when the API ends the session or demands an update. */

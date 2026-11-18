@@ -1,4 +1,5 @@
 import { argon2idAsync } from '@noble/hashes/argon2.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 import { getJson, setJson, type KeyValueStore } from '../storage';
 
@@ -12,26 +13,29 @@ export const FIRST_WAIT_MS = 30_000;
 /** After this many failures the PIN stops working and the account password is needed (Forgot PIN, 74). */
 export const MAX_FAILED_ATTEMPTS = 10;
 
+/** Legacy argon2id settings (records written before 2026-11-19 still verify with their stored params). */
 export interface HashParams {
   t: number;
   m: number;
   p: number;
 }
-/**
- * argon2id (TRD §8), run in JavaScript (no JIT on Hermes), so kept light. Measured in debug builds:
- * t=2, m=8 MiB took 2–4 s on the iOS simulator; t=1, m=4 MiB took ~8 s on the Android emulator.
- * A 4-digit PIN has only 10,000 values, so hashing cost can't protect it offline anyway: the real protection
- * is the Keychain/Keystore holding the hash plus the attempt limits below. Each record stores its own params,
- * so they can be raised later (e.g. with a native argon2) without breaking existing PINs.
- */
-export const DEFAULT_HASH_PARAMS: HashParams = { t: 1, m: 256, p: 1 };
 
-interface PinRecord {
-  v: 1;
-  salt: string;
-  hash: string;
-  params: HashParams;
-}
+/** A SHA-256 implementation: native (expo-crypto) in the app, WebCrypto or JS in tests. */
+export type Digest = (data: Uint8Array) => Promise<Uint8Array>;
+
+/**
+ * New PINs: salted SHA-256 iterated `ITERATIONS` times, each round `sha256(previous || salt)`.
+ * The app runs it through expo-crypto's native digest, asynchronously, so the keypad never freezes.
+ * argon2id in JavaScript blocked the JS thread for seconds on Hermes (2–8 s in debug builds), which made
+ * taps queue up on the lock screen. A 4-digit PIN has only 10,000 values, so hashing cost can't protect it
+ * offline anyway: the real protection is the Keychain/Keystore holding the hash plus the attempt limits below.
+ */
+export const ITERATIONS = 1000;
+
+type PinRecord =
+  | { v: 1; salt: string; hash: string; params: HashParams }
+  | { v: 2; alg: 'sha256-iter'; salt: string; hash: string; iterations: number };
+
 interface AttemptState {
   failed: number;
   lockedUntil: number | null;
@@ -50,10 +54,32 @@ export type VerifyResult =
 export interface PinLockOptions {
   now?: () => number;
   randomBytes?: (n: number) => Uint8Array;
-  params?: HashParams;
+  /** SHA-256. Defaults to WebCrypto when available, else a JS implementation. */
+  digest?: Digest;
+  iterations?: number;
 }
 
-export async function hashPin(pin: string, salt: Uint8Array, params: HashParams = DEFAULT_HASH_PARAMS) {
+const concat = (a: Uint8Array, b: Uint8Array) => {
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a);
+  out.set(b, a.length);
+  return out;
+};
+
+const defaultDigest: Digest = async (data) => {
+  const subtle = globalThis.crypto?.subtle;
+  if (subtle) return new Uint8Array(await subtle.digest('SHA-256', data as Uint8Array<ArrayBuffer>));
+  return sha256(data);
+};
+
+/** Salted, iterated SHA-256 of the PIN, as hex. */
+export async function hashPin(pin: string, salt: Uint8Array, iterations = ITERATIONS, digest: Digest = defaultDigest) {
+  let h = await digest(concat(salt, new TextEncoder().encode(pin)));
+  for (let i = 1; i < iterations; i++) h = await digest(concat(h, salt));
+  return bytesToHex(h);
+}
+
+async function legacyArgon2(pin: string, salt: Uint8Array, params: HashParams) {
   return bytesToHex(await argon2idAsync(pin, salt, { ...params, dkLen: 32 }));
 }
 
@@ -72,14 +98,20 @@ const defaultRandom = (n: number) => {
 };
 
 /**
- * The app lock PIN: stored as an argon2id hash with a random salt in secure storage, never in plain text.
+ * The app lock PIN: stored as a salted, iterated SHA-256 hash in secure storage, never in plain text.
  * Wrong attempts are counted across restarts: every 5 failures add a wait (30 s, 60 s, …),
  * and after 10 the PIN is disabled until the user confirms their account password.
  */
 export function createPinLock(store: KeyValueStore, options: PinLockOptions = {}) {
   const now = options.now ?? Date.now;
   const randomBytes = options.randomBytes ?? defaultRandom;
-  const params = options.params ?? DEFAULT_HASH_PARAMS;
+  const digest = options.digest ?? defaultDigest;
+  const iterations = options.iterations ?? ITERATIONS;
+
+  const hashFor = (pin: string, record: PinRecord) =>
+    record.v === 1
+      ? legacyArgon2(pin, hexToBytes(record.salt), record.params)
+      : hashPin(pin, hexToBytes(record.salt), record.iterations, digest);
 
   const attempts = async (): Promise<AttemptState> =>
     (await getJson<AttemptState>(store, ATTEMPTS_KEY)) ?? { failed: 0, lockedUntil: null };
@@ -92,7 +124,13 @@ export function createPinLock(store: KeyValueStore, options: PinLockOptions = {}
     async setPin(pin: string) {
       if (!isValidPin(pin)) throw new RangeError(`The PIN must be ${PIN_LENGTH} digits`);
       const salt = randomBytes(16);
-      const record: PinRecord = { v: 1, salt: bytesToHex(salt), hash: await hashPin(pin, salt, params), params };
+      const record: PinRecord = {
+        v: 2,
+        alg: 'sha256-iter',
+        salt: bytesToHex(salt),
+        hash: await hashPin(pin, salt, iterations, digest),
+        iterations,
+      };
       await setJson(store, PIN_KEY, record);
       await store.deleteItem(ATTEMPTS_KEY);
     },
@@ -106,7 +144,7 @@ export function createPinLock(store: KeyValueStore, options: PinLockOptions = {}
       if (state.lockedUntil && now() < state.lockedUntil)
         return { ok: false, reason: 'locked', lockedUntil: state.lockedUntil };
 
-      const candidate = isValidPin(pin) ? await hashPin(pin, hexToBytes(record.salt), record.params) : '';
+      const candidate = isValidPin(pin) ? await hashFor(pin, record) : '';
       if (candidate && sameHex(candidate, record.hash)) {
         await store.deleteItem(ATTEMPTS_KEY);
         return { ok: true };
