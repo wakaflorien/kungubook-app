@@ -20,6 +20,9 @@ import { ThemeProvider, useTheme } from '../theme';
 
 void SplashScreen.preventAutoHideAsync();
 
+/** Bottom-sheet heights (fraction of the screen): opens tall, can be dragged down to the smaller one. */
+const SHEET_DETENTS = [0.6, 0.94];
+
 function makeQueryClient() {
   return new QueryClient({
     defaultOptions: {
@@ -46,9 +49,13 @@ function Navigator() {
         <Stack.Screen
           name="add"
           options={{
-            presentation: 'transparentModal',
-            animation: 'fade',
-            contentStyle: { backgroundColor: 'transparent' },
+            // Native bottom sheet: slides in and out, drag between heights, swipe down to close.
+            presentation: 'formSheet',
+            sheetAllowedDetents: SHEET_DETENTS,
+            sheetInitialDetentIndex: 'last',
+            sheetGrabberVisible: true,
+            sheetCornerRadius: t.radius.xl,
+            contentStyle: { backgroundColor: t.colors.surface },
           }}
         />
       </Stack>
