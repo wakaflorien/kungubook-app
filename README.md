@@ -51,6 +51,18 @@ The seeded demo user is `keza@example.com` / `kungubook-demo` (fictional, mock o
 
 Mock-only test values: the password-reset link token is `mock-reset-token` (open `kungubook://reset-password?token=mock-reset-token`); Apple and Google tokens are accepted as-is. `pnpm mock:prism` runs plain Prism on 4010 instead.
 
+### Insomnia collection
+
+Run `pnpm api:insomnia` to write `api-collections/insomnia.json`: every route in the spec (111 requests, one folder per tag). The file stays on your machine (git ignores it). In Insomnia, choose **Import** and pick the file, then select an environment:
+
+- **Mock (localhost)**: `http://localhost:4010`.
+- **Mock (Android emulator)**: `http://10.0.2.2:4010`.
+- **Staging (not live yet)**: a placeholder for the real API.
+
+Start `pnpm mock`, then send any request. You don't need to sign in first: `access_token` runs **Auth → Sign in** with the demo user (`keza@example.com` / `kungubook-demo`, set in the base environment) and runs it again once the token is 14 minutes old. Path IDs (`account_id`, `transaction_id`, …) are environment variables; the defaults point at Keza's seed data. Query parameters are listed but turned off.
+
+The collection is generated from `src/api/openapi.yaml`; don't edit the file by hand. When the backend publishes its spec, run `pnpm api:sync` and then `pnpm api:insomnia`, and re-import the file: it replaces this collection. Edits you make inside Insomnia are lost when you re-import.
+
 ## Security model (M1)
 
 - **Tokens** live in the Keychain / Keystore (`expo-secure-store`, this device only). Every request carries the bearer token; on `401 token_expired` the client refreshes once (refresh tokens rotate) and retries; if the refresh is refused the app signs out and wipes local data.
@@ -63,15 +75,16 @@ Mock-only test values: the password-reset link token is `mock-reset-token` (open
 | Script                             | What it does                                                                                                                                     |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `pnpm start` / `ios` / `android`   | Expo dev server                                                                                                                                  |
-| `pnpm mock`                        | Prism mock server on port 4010                                                                                                                   |
+| `pnpm mock`                        | Mock API on port 4010 (stateful handlers, Prism for the rest)                                                                                    |
 | `pnpm lint` · `typecheck` · `test` | ESLint, `tsc --noEmit`, Vitest                                                                                                                   |
 | `pnpm format` / `format:check`     | Prettier                                                                                                                                         |
 | `pnpm api:sync`                    | Copies the spec (`SPEC_PATH`, default `../docs/openapi.yaml`, or `API_SPEC_URL`) to `src/api/openapi.yaml` and regenerates `src/api/schema.d.ts` |
 | `pnpm api:sync --check`            | Fails if `schema.d.ts` is out of date (CI)                                                                                                       |
+| `pnpm api:insomnia`                | Builds a local Insomnia collection, `api-collections/insomnia.json`, from the spec (not committed)                                               |
 | `pnpm tokens`                      | `../design/tokens.json` (or `TOKENS_PATH`) → `src/theme/tokens.ts`                                                                               |
 | `pnpm doctor`                      | `expo-doctor`: checks dependency versions against the SDK                                                                                        |
 
-The generated files (`src/api/openapi.yaml`, `src/api/schema.d.ts` and `src/theme/tokens.ts`) are committed, so this repo builds without the parent folder. Re-run `pnpm api:sync` or `pnpm tokens` after changing `../docs/openapi.yaml` or `../design/tokens.json`, then commit the result.
+The generated files (`src/api/openapi.yaml`, `src/api/schema.d.ts` and `src/theme/tokens.ts`) are committed, so this repo builds without the parent folder. Re-run `pnpm api:sync` (then `pnpm api:insomnia`) or `pnpm tokens` after changing `../docs/openapi.yaml` or `../design/tokens.json`, then commit the result.
 
 ## Environments
 
@@ -105,7 +118,8 @@ src/state/          session state machine (signedOut → onboarding → locked �
 src/config/         env (APP_ENV → base URL) and the app's services (API client, auth, PIN lock, cache)
 src/features/       screens' building blocks and hooks: accounts, auth, me, security
 mocks/              seed (Keza Uwase) + stateful MSW handlers (tests and `pnpm mock`)
-scripts/            api-sync, tokens, mock-server
+scripts/            api-sync, insomnia, tokens, mock-server
+api-collections/    local Insomnia collection from pnpm api:insomnia (git-ignored)
 ```
 
 `src/lib`, `src/theme/tokens.ts` and `src/api` import nothing from React Native, so they can move into a shared package when the web repo starts.

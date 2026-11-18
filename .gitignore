@@ -46,3 +46,6 @@ coverage/
 
 # text editors
 .idea/
+
+# Local Insomnia collection (pnpm api:insomnia)
+api-collections/

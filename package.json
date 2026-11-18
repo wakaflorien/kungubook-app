@@ -21,7 +21,8 @@
     "api:sync": "tsx scripts/api-sync.ts",
     "mock": "tsx scripts/mock-server.ts",
     "doctor": "expo-doctor",
-    "mock:prism": "prism mock src/api/openapi.yaml --port 4010 --host 0.0.0.0"
+    "mock:prism": "prism mock src/api/openapi.yaml --port 4010 --host 0.0.0.0",
+    "api:insomnia": "tsx scripts/insomnia.ts"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
@@ -68,6 +69,7 @@
     "sf-symbols-typescript": "2.2.0",
     "tsx": "^4.23.15",
     "typescript": "~6.0.3",
-    "vitest": "^5.1.1"
+    "vitest": "^5.1.1",
+    "yaml": "^2.9.1"
   }
 }
