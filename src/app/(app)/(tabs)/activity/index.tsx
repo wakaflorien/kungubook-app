@@ -1,5 +1,5 @@
 import { Stack, useRouter } from 'expo-router';
-import { ScrollView, View } from 'react-native';
+import { Platform, ScrollView, View } from 'react-native';
 import { useAccounts } from '../../../../features/accounts/useAccounts';
 import { useRefresh } from '../../../../features/sync/useLocalQuery';
 import { SyncBanner } from '../../../../features/sync/SyncBanner';
@@ -13,7 +13,9 @@ import {
 } from '../../../../features/transactions/useTransactions';
 import { groupByDay } from '../../../../lib/ledger';
 import { useTheme } from '../../../../theme';
-import { Amount, Card, Chip, EmptyState, Screen, Text } from '../../../../ui';
+import { Amount, Card, Chip, EmptyState, Screen, SearchBar, Text } from '../../../../ui';
+
+const SEARCH_PLACEHOLDER = 'Search name, amount or note';
 
 const PERIOD_LABEL = {
   week: 'This week',
@@ -51,17 +53,22 @@ export default function ActivityScreen() {
 
   return (
     <Screen title="Activity" refreshing={refreshing} onRefresh={() => void refresh()}>
-      <Stack.Screen
-        options={{
-          headerSearchBarOptions: {
-            placeholder: 'Search name, amount or note',
-            hideWhenScrolling: false,
-            autoCapitalize: 'none',
-            onChangeText: (e) => filters.set({ q: e.nativeEvent.text }),
-            onCancelButtonPress: () => filters.set({ q: '' }),
-          },
-        }}
-      />
+      {/* iOS: native search in the glass header. Android: our own search bar in the page (see SearchBar). */}
+      {Platform.OS === 'ios' ? (
+        <Stack.Screen
+          options={{
+            headerSearchBarOptions: {
+              placeholder: SEARCH_PLACEHOLDER,
+              hideWhenScrolling: false,
+              autoCapitalize: 'none',
+              onChangeText: (e) => filters.set({ q: e.nativeEvent.text }),
+              onCancelButtonPress: () => filters.set({ q: '' }),
+            },
+          }}
+        />
+      ) : (
+        <SearchBar value={filters.q} onChangeText={(q) => filters.set({ q })} placeholder={SEARCH_PLACEHOLDER} />
+      )}
       <SyncBanner />
 
       <ScrollView
