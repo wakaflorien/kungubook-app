@@ -7,6 +7,7 @@ import type {
   TransferDraft,
   TxnKind,
   TxnSource,
+  Txn,
   TxnStatus,
 } from '../../db/repositories';
 import { dayKey, periodRange, type Period } from '../../lib/ledger';
@@ -75,6 +76,8 @@ export const useUpdateTransaction = () =>
     repos.transactions.update(id, patch),
   );
 export const useRemoveTransaction = () => useLocalMutation((id: string) => repos.transactions.remove(id));
+export const useRestoreTransaction = () =>
+  useLocalMutation((snapshot: readonly Txn[]) => repos.transactions.restore(snapshot));
 export const useConfirmTransaction = () => useLocalMutation((id: string) => repos.transactions.confirm(id));
 export const useCreateTransfer = () => useLocalMutation((d: TransferDraft) => repos.transactions.createTransfer(d));
 export const useUpdateTransfer = () =>

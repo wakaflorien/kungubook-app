@@ -19,7 +19,7 @@ export function DateTimeField({ label, value, onChange, max }: DateTimeFieldProp
         paddingRight: t.space.s2,
         borderRadius: t.radius.md,
         borderWidth: 1,
-        borderColor: t.colors.line,
+        borderColor: t.colors.lineStrong,
         backgroundColor: t.colors.surface,
       }}
     >

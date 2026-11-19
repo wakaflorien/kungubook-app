@@ -172,7 +172,6 @@ export default function HomeScreen() {
         left={[
           { sf: 'person.crop.circle', icon: 'account_circle', label: 'Account and sign out', onPress: openAccountMenu },
         ]}
-        right={[{ sf: 'bell', icon: 'notifications', label: 'Notifications', onPress: () => {} }]}
       />
       <Text variant="sub" color="ink2" style={{ marginBottom: -t.space.s4 }}>
         {greeting()} · {longDate()}

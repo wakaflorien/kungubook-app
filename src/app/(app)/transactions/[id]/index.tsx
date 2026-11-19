@@ -5,9 +5,9 @@ import { itemAmountKind, itemTile, itemTitle } from '../../../../features/transa
 import {
   useConfirmTransaction,
   useRemoveTransaction,
+  useRestoreTransaction,
   useTransaction,
 } from '../../../../features/transactions/useTransactions';
-import type { TransactionItem } from '../../../../db/repositories';
 import { formatMoney } from '../../../../lib/money';
 import { useTheme } from '../../../../theme';
 import {
@@ -20,6 +20,7 @@ import {
   ListRow,
   Screen,
   SectionHeader,
+  showSnackbar,
   SourceTag,
   Text,
   Tile,
@@ -63,29 +64,14 @@ const when = (iso: string) =>
     timeZone: 'Africa/Kigali',
   });
 
-/** "−RWF 18,500 to Kigali Grocers on 17 Nov will be removed from MTN MoMo and from your reports." (screen 72) */
-export function deleteMessage(i: TransactionItem) {
-  const t = i.txn;
-  const day = new Date(t.occurred_at).toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    timeZone: 'Africa/Kigali',
-  });
-  if (i.transfer) {
-    return `The ${formatMoney(t.amount, t.currency)} transfer from ${i.transfer.from?.name ?? 'one account'} to ${i.transfer.to?.name ?? 'another'} on ${day} will be removed from both accounts. You can't undo this.`;
-  }
-  const amount = formatMoney(t.amount, t.currency, { sign: t.kind === 'in' ? 'in' : 'out' });
-  const who = t.counterparty_text ? ` ${t.kind === 'in' ? 'from' : 'to'} ${t.counterparty_text}` : '';
-  return `${amount}${who} on ${day} will be removed from ${i.account?.name ?? 'the account'} and from your reports. You can't undo this.`;
-}
-
-/** Screen 03 · Transaction detail, with actions (71) and delete (72). */
+/** Screen 03 · Transaction detail, with actions (71) and delete with Undo (72). */
 export default function TransactionDetail() {
   const t = useTheme();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data: item, isPending } = useTransaction(id);
   const remove = useRemoveTransaction();
+  const restore = useRestoreTransaction();
   const confirm = useConfirmTransaction();
 
   if (!item) {
@@ -107,18 +93,24 @@ export default function TransactionDetail() {
     ? `/transactions/new?edit=${item.transfer.out.id}&kind=transfer`
     : `/transactions/new?edit=${txn.id}&kind=${txn.kind}`;
 
-  const askDelete = () => {
+  // Deletes at once; the snackbar's Undo puts the rows back (both transfer legs, split parts).
+  const deleteNow = () => {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    Alert.alert(item.transfer ? 'Delete this transfer?' : 'Delete this transaction?', deleteMessage(item), [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: item.transfer ? 'Delete transfer' : 'Delete transaction',
-        style: 'destructive',
-        onPress: () => {
-          void remove.mutateAsync(txn.id).then(() => router.back());
+    const label = item.transfer ? 'Transfer deleted' : 'Transaction deleted';
+    void remove.mutateAsync(txn.id).then((snapshot) => {
+      router.back();
+      if (!snapshot.length) return;
+      showSnackbar({
+        message: label,
+        action: {
+          label: 'Undo',
+          onPress: () =>
+            void restore
+              .mutateAsync(snapshot)
+              .then(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)),
         },
-      },
-    ]);
+      });
+    });
   };
 
   // Screen 71 · Actions. "Move to a project" (v1.1) and "Create a rule" (M3) arrive later.
@@ -137,13 +129,13 @@ export default function TransactionDetail() {
         },
         (i) => {
           if (i === 0) copy();
-          if (i === 1) askDelete();
+          if (i === 1) deleteNow();
         },
       );
     } else {
       Alert.alert(itemTitle(item), undefined, [
         { text: 'Copy as new', onPress: copy },
-        { text: 'Delete', style: 'destructive', onPress: askDelete },
+        { text: 'Delete', style: 'destructive', onPress: deleteNow },
         { text: 'Cancel', style: 'cancel' },
       ]);
     }
@@ -238,7 +230,7 @@ export default function TransactionDetail() {
           label={item.transfer ? 'Delete transfer' : 'Delete transaction'}
           variant="danger"
           block
-          onPress={askDelete}
+          onPress={deleteNow}
         />
       </View>
     </Screen>

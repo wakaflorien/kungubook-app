@@ -447,18 +447,43 @@ export function createRepositories(store: LocalStore, opts: { timeZone?: () => s
     /** Moves a pending (review) item into the totals. */
     confirm: (id: string) => transactions.update(id, { status: 'confirmed' }),
 
-    /** Deletes a transaction, both legs of a transfer, or a split parent with its parts. */
-    async remove(id: string) {
-      await store.write(async () => {
+    /**
+     * Deletes a transaction, both legs of a transfer, or a split parent with its parts.
+     * Returns the rows as they were (the item first), for `restore` (Undo).
+     */
+    async remove(id: string): Promise<Txn[]> {
+      return store.write(async () => {
         const t = await store.getRow<Txn & StoredRow>('transactions', id);
-        if (!live(t)) return;
-        const related = await store.read<{ json: string }>(
-          `SELECT json FROM transactions WHERE deleted_at IS NULL AND id != ? AND
-           ((transfer_group_id IS NOT NULL AND transfer_group_id = ?) OR split_parent_id = ?)`,
-          [id, t.transfer_group_id ?? null, id],
-        );
-        for (const r of related) await remove(parse<Txn & StoredRow>(r.json));
+        if (!live(t)) return [];
+        const related = (
+          await store.read<{ json: string }>(
+            `SELECT json FROM transactions WHERE deleted_at IS NULL AND id != ? AND
+             ((transfer_group_id IS NOT NULL AND transfer_group_id = ?) OR split_parent_id = ?)`,
+            [id, t.transfer_group_id ?? null, id],
+          )
+        ).map((r) => parse<Txn & StoredRow>(r.json));
+        for (const r of related) await remove(r);
         await remove(t);
+        return [t, ...related];
+      });
+    },
+
+    /**
+     * Undo for `remove`: puts the rows back. A delete still in the outbox merges with this upsert, so the
+     * net balance effect is 0; a row deleted before it ever synced is queued as new again.
+     */
+    async restore(snapshot: readonly Txn[]) {
+      await store.write(async () => {
+        const now = store.now();
+        for (const s of snapshot) {
+          const current = await store.getRow<Txn & StoredRow>('transactions', s.id);
+          if (current && !current.deleted_at) continue;
+          await save(
+            null,
+            { ...s, version: current?.version ?? s.version, deleted_at: null, updated_at: now, client_updated_at: now },
+            !current,
+          );
+        }
       });
     },
 

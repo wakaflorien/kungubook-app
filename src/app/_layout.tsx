@@ -22,7 +22,7 @@ import { useSyncLoop } from '../features/sync/useSyncLoop';
 import { createAutoLock } from '../lib/security/auto-lock';
 import { useSession, type OnboardingStep } from '../state/session';
 import { ThemeProvider, useTheme } from '../theme';
-import { Button, EmptyState, Icon } from '../ui';
+import { Button, EmptyState, Icon, SnackbarHost } from '../ui';
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -157,6 +157,7 @@ function Navigator() {
           <Stack.Screen name="(app)" options={{ animation: 'fade' }} />
         </Stack.Protected>
       </Stack>
+      <SnackbarHost />
       {upgradeRequired ? <UpgradeRequired /> : null}
       {covered ? <PrivacyCover /> : null}
     </>

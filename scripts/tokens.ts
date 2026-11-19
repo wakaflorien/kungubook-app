@@ -68,7 +68,6 @@ for (const g of t.type.groups) {
       fontSize: px(s.fontSize),
       lineHeight: px(s.lineHeight),
       ...(s.letterSpacing ? { letterSpacing: px(s.letterSpacing) } : {}),
-      ...(key === 'label' ? { textTransform: 'uppercase' } : {}),
     };
   }
 }

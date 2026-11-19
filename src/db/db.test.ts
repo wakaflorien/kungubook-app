@@ -139,6 +139,98 @@ describe('offline changes', () => {
   });
 });
 
+describe('undo delete', () => {
+  const serverRow = (id: string) => kezaOf(mock).transactions.find((t) => t.id === id);
+
+  it('restores a synced row: the pending delete merges away, so the balance effect is 0', async () => {
+    const a = await device();
+    await a.sync.sync();
+    const t = await a.transactions.create({
+      account_id: MOMO,
+      kind: 'out',
+      amount: 10_000,
+      occurred_at: '2026-11-18T08:00:00Z',
+    });
+    await a.sync.sync();
+    const before = await localBalances(a);
+
+    const snapshot = await a.transactions.remove(t.id);
+    expect(snapshot.map((r) => r.id)).toEqual([t.id]);
+    expect((await a.accounts.get(MOMO))!.balance).toBe(before.byId[MOMO]! + 10_000);
+    await a.transactions.restore(snapshot);
+
+    expect((await a.transactions.get(t.id))?.txn.deleted_at).toBeNull();
+    const outbox = await a.store.outbox(['pending']);
+    expect(outbox).toMatchObject([{ row_id: t.id, op: 'upsert', effect: {}, is_new: false }]);
+    expect(await a.store.pendingEffects()).toEqual({});
+    expect(await localBalances(a)).toEqual(before);
+
+    await a.sync.sync();
+    expect(serverRow(t.id)?.deleted_at).toBeNull();
+    expect(await localBalances(a)).toEqual(await serverBalances(a.api));
+  });
+
+  it('restores a row deleted before it ever synced, as a new row', async () => {
+    const a = await device();
+    await a.sync.sync();
+    const t = await a.transactions.create({
+      account_id: MOMO,
+      kind: 'in',
+      amount: 1_000,
+      occurred_at: '2026-11-18T08:00:00Z',
+    });
+    const snapshot = await a.transactions.remove(t.id);
+    expect((await a.store.counts()).unsynced).toBe(0);
+    await a.transactions.restore(snapshot);
+
+    expect(await a.transactions.get(t.id)).not.toBeNull();
+    expect(await a.store.outbox(['pending'])).toMatchObject([
+      { row_id: t.id, op: 'upsert', effect: { [MOMO]: 1_000 }, is_new: true },
+    ]);
+    expect((await a.accounts.get(MOMO))!.balance).toBe(412_400 + 1_000);
+
+    await a.sync.sync();
+    expect(serverRow(t.id)?.deleted_at).toBeNull();
+    expect(await localBalances(a)).toEqual(await serverBalances(a.api));
+  });
+
+  it('restores both legs of a transfer, also after the delete was pushed', async () => {
+    const a = await device();
+    await a.sync.sync();
+    const { out } = await a.transactions.createTransfer({
+      from_account_id: BK,
+      to_account_id: MOMO,
+      amount: 50_000,
+      occurred_at: '2026-11-18T09:00:00Z',
+    });
+    await a.sync.sync();
+    const before = await localBalances(a);
+    const legs = (await a.transactions.list({ directions: ['transfer'] })).find((i) => i.transfer?.out.id === out.id)!;
+
+    // Undo before the delete is sent: both legs merge to a no-op.
+    let snapshot = await a.transactions.remove(out.id);
+    expect(snapshot.map((r) => r.id).sort()).toEqual([legs.transfer!.out.id, legs.transfer!.in.id].sort());
+    await a.transactions.restore(snapshot);
+    expect((await a.store.outbox(['pending'])).map((e) => [e.op, e.effect])).toEqual([
+      ['upsert', {}],
+      ['upsert', {}],
+    ]);
+    expect(await a.store.pendingEffects()).toEqual({});
+    expect(await localBalances(a)).toEqual(before);
+    await a.sync.sync();
+
+    // Undo after the delete reached the server: the upsert brings the rows back there too.
+    snapshot = await a.transactions.remove(out.id);
+    await a.sync.sync();
+    expect(serverRow(out.id)?.deleted_at).toBeTruthy();
+    await a.transactions.restore(snapshot);
+    await a.sync.sync();
+    expect(snapshot.map((r) => serverRow(r.id)?.deleted_at)).toEqual([null, null]);
+    expect(await localBalances(a)).toEqual(before);
+    expect(await localBalances(a)).toEqual(await serverBalances(a.api));
+  });
+});
+
 describe('transfers', () => {
   it('moves money between accounts without changing income or spending', async () => {
     const a = await device();

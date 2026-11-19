@@ -71,7 +71,7 @@ export function PinPad({ value, length = 4, onChange, biometric, disabled, messa
         height: 72,
         borderRadius: t.radius.full,
         borderWidth: 1,
-        borderColor: t.colors.line,
+        borderColor: t.colors.lineStrong,
         backgroundColor: pressed ? t.colors.surface2 : t.colors.surface,
         alignItems: 'center',
         justifyContent: 'center',

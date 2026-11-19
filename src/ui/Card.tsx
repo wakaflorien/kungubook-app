@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Pressable, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, Pressable, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useTheme } from '../theme';
 
 export interface CardProps {
@@ -28,7 +28,14 @@ export function Card({ children, variant = 'default', onPress, accessibilityLabe
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
         onPress={onPress}
-        style={({ pressed }) => [base, pressed && { opacity: 0.92 }, style]}
+        android_ripple={{ color: variant === 'hero' ? t.colors.navy2 : t.colors.surface2, foreground: true }}
+        style={({ pressed }) => [
+          base,
+          // iOS gets a highlight fill; Android shows the ripple above.
+          pressed &&
+            Platform.OS === 'ios' && { backgroundColor: variant === 'hero' ? t.colors.navy2 : t.colors.surface2 },
+          style,
+        ]}
       >
         {children}
       </Pressable>
