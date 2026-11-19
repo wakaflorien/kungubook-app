@@ -1,63 +1,53 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { useEffect } from 'react';
-import { unwrap, type Account, type components } from '../../api';
-import { api, cache, queryClient } from '../../config/api';
+import type { components } from '../../api';
+import { repos, syncEngine } from '../../config/data';
+import type { Acct } from '../../db/repositories';
+import { useLocalMutation, useLocalQuery, useRefresh, useSyncStatus } from '../sync/useLocalQuery';
 
 type AccountInput = components['schemas']['AccountInput'];
-export type AccountList = { data: Account[]; total: components['schemas']['Money'] };
-
-const KEY = ['accounts'] as const;
-const CACHE_KEY = 'accounts';
+export type AccountList = { data: Acct[]; total: components['schemas']['Money'] };
 
 /**
- * `GET /accounts`: the API's balances and total (the app never sums them itself).
- * The last answer is kept in the encrypted cache, so Home shows figures straight after unlock.
+ * Accounts from the local database (M2): balances are the last synced balances plus changes made on this phone
+ * that haven't synced yet, so Home updates the moment something is saved, even offline.
+ * Before the first sync on this phone there's nothing to show yet: `isPending` (or `isError` if it failed).
  */
 export function useAccounts() {
-  useEffect(() => {
-    if (queryClient.getQueryData(KEY)) return;
-    void cache.get<AccountList>(CACHE_KEY).then((cached) => {
-      if (cached && !queryClient.getQueryData(KEY)) queryClient.setQueryData(KEY, cached, { updatedAt: 0 });
-    });
-  }, []);
-
-  return useQuery({
-    queryKey: KEY,
-    queryFn: async () => {
-      const list = await unwrap(api.GET('/accounts'));
-      void cache.set(CACHE_KEY, list);
-      return list;
-    },
+  const q = useLocalQuery(['accounts'], async () => {
+    const [data, total, synced] = await Promise.all([
+      repos.accounts.list(),
+      repos.accounts.total(),
+      syncEngine.hasSynced(),
+    ]);
+    return { list: { data, total } as AccountList, synced };
   });
+  const sync = useSyncStatus();
+  const { refreshing, refresh } = useRefresh();
+  const waiting = !!q.data && !q.data.synced && q.data.list.data.length === 0;
+  const failed = waiting && (sync.phase === 'offline' || sync.phase === 'error');
+  return {
+    data: q.data && !waiting ? q.data.list : undefined,
+    isPending: q.isPending || (waiting && !failed),
+    isError: failed,
+    error: sync.error ?? new Error('Not synced yet'),
+    refetch: refresh,
+    isRefetching: refreshing,
+  };
 }
 
 export function useAccount(id: string) {
-  return useQuery({
-    queryKey: [...KEY, id],
-    queryFn: () => unwrap(api.GET('/accounts/{id}', { params: { path: { id } } })),
-    placeholderData: () => queryClient.getQueryData<AccountList>(KEY)?.data.find((a) => a.id === id),
-  });
+  const q = useLocalQuery(['account', id], () => repos.accounts.get(id));
+  return { data: q.data ?? undefined, isError: q.isSuccess && !q.data, isPending: q.isPending };
 }
 
-const refresh = () => queryClient.invalidateQueries({ queryKey: KEY });
-
 export function useCreateAccount() {
-  return useMutation({
-    mutationFn: (body: AccountInput & Required<Pick<AccountInput, 'id' | 'type' | 'name' | 'currency'>>) =>
-      unwrap(api.POST('/accounts', { body })),
-    onSuccess: refresh,
-  });
+  return useLocalMutation((body: AccountInput & { id?: string; type: Acct['type']; name: string; currency: string }) =>
+    repos.accounts.create(body),
+  );
 }
 
 export function useUpdateAccount(id: string) {
-  return useMutation({
-    mutationFn: ({ version, ...body }: AccountInput & { version?: number }) =>
-      unwrap(
-        api.PATCH('/accounts/{id}', {
-          params: { path: { id }, header: version ? { 'If-Match': version } : undefined },
-          body,
-        }),
-      ),
-    onSuccess: refresh,
-  });
+  // `version` is kept on the stored row and sent with the push (last write wins on the server).
+  return useLocalMutation(({ version: _version, ...body }: AccountInput & { version?: number }) =>
+    repos.accounts.update(id, body),
+  );
 }

@@ -18,6 +18,7 @@ import * as SystemUI from 'expo-system-ui';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, Linking, LogBox, Platform, View } from 'react-native';
 import { queryClient } from '../config/api';
+import { useSyncLoop } from '../features/sync/useSyncLoop';
 import { createAutoLock } from '../lib/security/auto-lock';
 import { useSession, type OnboardingStep } from '../state/session';
 import { ThemeProvider, useTheme } from '../theme';
@@ -133,6 +134,7 @@ function Navigator() {
   const upgradeRequired = useSession((s) => s.upgradeRequired);
   useStatusRoute();
   const covered = useAutoLockAndCover();
+  useSyncLoop(status === 'ready' || status === 'onboarding');
 
   useEffect(() => {
     void SystemUI.setBackgroundColorAsync(t.colors.bg);

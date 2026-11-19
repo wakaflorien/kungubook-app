@@ -86,6 +86,8 @@ export type AuthService = ReturnType<typeof createAuthService>;
 
 /** What to tell the user for an auth error (Design System §5: say what happened and what to do). */
 export function authErrorMessage(e: unknown): string {
+  // Local checks (src/db) already speak to the user.
+  if (e instanceof Error && e.name === 'ValidationError') return e.message;
   if (!(e instanceof ApiError)) return 'Something went wrong. Try again.';
   switch (e.code) {
     case 'invalid_credentials':

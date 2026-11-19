@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Session } from '../api';
 import { api, apiEvents, auth, cache, kv, pinLock, queryClient, tokenStore } from '../config/api';
+import { resetLocalData } from '../config/data';
 import { initialStatus, type AppStatus } from '../lib/security/auto-lock';
 import { getJson, setJson } from '../lib/storage';
 import { registerDevice } from '../platform/push';
@@ -125,6 +126,8 @@ export const useSession = create<SessionState>()((set, get) => ({
   async signOut() {
     await auth.signOut();
     await Promise.all([pinLock.clear(), cache.wipe(), ...Object.values(KEYS).map((k) => kv.deleteItem(k))]);
+    // The database file is gone; the next read re-creates it and the next sign-in downloads everything again.
+    resetLocalData();
     queryClient.clear();
     set({ status: 'signedOut', profile: null, step: 'profile', mode: 'new', biometricsEnabled: false });
   },
