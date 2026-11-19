@@ -20,7 +20,7 @@ my-finance/                  parent folder (not a repo)
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **M0 · Foundations**                | Done. Tab shell and + sheet, UI kit, theme, API client, mocks and CI are in. Home shows the accounts total from the mock. Checked on the iOS simulator.                                                                                                             |
 | **M1 · Auth, onboarding, accounts** | Done against the mock. Sign-up/in (email, Apple, Google code paths), password reset, onboarding steps 2–6, PIN + biometrics, auto-lock, encrypted cache, device registration, accounts list/detail/add/edit. Checked on the iOS simulator and the Android emulator. |
-| M2 · Transactions & sync            | Next                                                                                                                                                                                                                                                                |
+| **M2 · Transactions & sync**        | Done against the mock. Local-first SQLite with an offline queue and `/sync` push/pull, Activity (search, filters, day groups), quick add (expense, income, transfer), detail, split, delete, Home recent list and offline banner. Two-phone check on iOS + Android. |
 | M2–M8                               | See `../docs/06-implementation-plan.md`                                                                                                                                                                                                                             |
 
 ## Prerequisites
@@ -62,6 +62,16 @@ Run `pnpm api:insomnia` to write `api-collections/insomnia.json`: every route in
 Start `pnpm mock`, then send any request. You don't need to sign in first: `access_token` runs **Auth → Sign in** with the demo user (`keza@example.com` / `kungubook-demo`, set in the base environment) and runs it again once the token is 14 minutes old. Path IDs (`account_id`, `transaction_id`, …) are environment variables; the defaults point at Keza's seed data. Query parameters are listed but turned off.
 
 The collection is generated from `src/api/openapi.yaml`; don't edit the file by hand. When the backend publishes its spec, run `pnpm api:sync` and then `pnpm api:insomnia`, and re-import the file: it replaces this collection. Edits you make inside Insomnia are lost when you re-import.
+
+## Offline data and sync (M2)
+
+Screens read and write the local database (`src/db`), never the API directly, so everything works offline (TRD §4).
+
+- **Local store**: synced rows (accounts, categories, transactions) plus an **outbox** of local changes, in the encrypted SQLite file. Repositories apply the ledger rules in `src/lib/ledger`: transfers are two legs that move balances but never income or spending; split parts replace their parent in totals; items in Review count nowhere.
+- **Balances** shown = the last synced balance + the effect of local changes that haven't synced yet, so Home updates the moment you save, even offline.
+- **Sync** (`src/db/sync.ts`): push the outbox to `POST /sync/push` in batches of 500, then pull `GET /sync/pull?since=<cursor>` until `has_more` is false. Last write wins on the server (by `client_updated_at`); the losing copy goes to `sync_conflicts`. Refused changes stay on the phone, with a "couldn't sync" banner and Retry.
+- **When it runs**: 2 s after a local save, when the app opens or returns to the foreground, as soon as the connection comes back, and every 3 s while the app is open (`POLL_MS` in `src/config/data.ts`), which is how a change from another phone shows within 5 s. A silent push from the API (M5) can replace most of the polling.
+- **The mock** keeps a change log and implements both sync endpoints with the same rules (`mocks/sync.ts`); deleting one leg of a transfer deletes both.
 
 ## Security model (M1)
 
@@ -111,13 +121,14 @@ src/ui/             design-system components (colours only via useTheme(); hex l
                     Switch/Segmented/Select/Slider/ProgressBar have .ios/.android files using native
                     SwiftUI / Jetpack Compose controls (@expo/ui); nativeHeader.tsx = header options + toolbar
 src/theme/          generated tokens + ThemeProvider/useTheme()
-src/lib/            pure TS, unit-tested: money, auth (service, token store), security (PIN lock, auto-lock), id
+src/lib/            pure TS, unit-tested: money, ledger (balances, totals, days), auth, security (PIN lock, auto-lock), id
+src/db/             local-first data: SQLite schema + migrations, outbox, repositories, sync engine (tests run on node:sqlite)
 src/api/            spec copy, generated types, openapi-fetch wrapper (auth, refresh, X-App-Version, errors, 426)
 src/platform/       native adapters: secure store, biometrics, encrypted SQLite cache, push, Apple/Google sign-in
 src/state/          session state machine (signedOut → onboarding → locked ⇄ ready)
-src/config/         env (APP_ENV → base URL) and the app's services (API client, auth, PIN lock, cache)
-src/features/       screens' building blocks and hooks: accounts, auth, me, security
-mocks/              seed (Keza Uwase) + stateful MSW handlers (tests and `pnpm mock`)
+src/config/         env (APP_ENV → base URL), the app's services (API client, auth, PIN lock) and data (store, sync)
+src/features/       screens' building blocks and hooks: accounts, transactions, sync, auth, me, security
+mocks/              seed (Keza Uwase) + stateful MSW handlers and sync (tests and `pnpm mock`)
 scripts/            api-sync, insomnia, tokens, mock-server
 api-collections/    local Insomnia collection from pnpm api:insomnia (git-ignored)
 ```
@@ -161,6 +172,7 @@ These need your accounts or a real device, so they weren't done here:
 ## Known issues
 
 - **Expo Go shows the full native look** on the iOS 27 simulator, including the Liquid Glass tab bar with + as a separate prominent item. Older iOS versions show a standard tab bar with + as the 5th tab.
+- **Expo Go on Android** occasionally fails its first cold start with `Cannot find native module 'ExpoCrypto'`. Force-stop Expo Go and open the project again; it doesn't happen in development builds.
 - **Dev-only navigation notice** (`ROUTE_NAMES_CHANGED … not handled`) can appear when a protected group mounts after sign-in or unlock. Each group routes itself once mounted; the notice doesn't exist in production builds.
 
 ## Troubleshooting
