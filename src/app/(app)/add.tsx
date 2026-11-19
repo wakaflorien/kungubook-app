@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import { env } from '../../config/env';
 import { Pressable, View } from 'react-native';
 import { useTheme, type ColorName } from '../../theme';
 import { Card, Icon, ListRow, Sheet, Text } from '../../ui';
@@ -11,6 +12,9 @@ const KINDS: { label: string; icon: string; color: ColorName; kind?: 'out' | 'in
   { label: 'Loan payment', icon: 'handshake', color: 'ink2' },
 ];
 
+/** Features that haven't shipped are listed (as "Soon") in mock and staging builds only, never in production. */
+const SHOW_SOON = env.appEnv !== 'production';
+
 /** Screen 10 · the + sheet. Expense, income and transfer open Quick add (11); the rest arrive in M3–M4 and v1.1. */
 export default function AddSheet() {
   const router = useRouter();
@@ -20,7 +24,7 @@ export default function AddSheet() {
   return (
     <Sheet title="Add" onClose={close}>
       <View style={{ flexDirection: 'row', gap: t.space.s2 }}>
-        {KINDS.map((k) => (
+        {KINDS.filter((k) => k.kind || SHOW_SOON).map((k) => (
           <Pressable
             key={k.label}
             accessibilityRole="button"
@@ -62,30 +66,32 @@ export default function AddSheet() {
         ))}
       </View>
 
-      <View style={{ gap: t.space.s3, marginTop: t.space.s2 }}>
-        <Text variant="label" color="ink2">
-          Capture from
-        </Text>
-        <Card variant="flush">
-          <ListRow
-            title="Paste a message"
-            subtitle="MoMo, Airtel or bank SMS · coming soon"
-            tile={{ icon: 'content_paste' }}
-          />
-          <ListRow
-            title="Import a statement"
-            subtitle="CSV, Excel or PDF · coming soon"
-            tile={{ icon: 'upload_file' }}
-            divider
-          />
-          <ListRow
-            title="Scan a receipt"
-            subtitle="Reads the total and the shop name · coming soon"
-            tile={{ icon: 'photo_camera' }}
-            divider
-          />
-        </Card>
-      </View>
+      {SHOW_SOON ? (
+        <View style={{ gap: t.space.s3, marginTop: t.space.s2 }}>
+          <Text variant="label" color="ink2">
+            Capture from
+          </Text>
+          <Card variant="flush">
+            <ListRow
+              title="Paste a message"
+              subtitle="MoMo, Airtel or bank SMS · coming soon"
+              tile={{ icon: 'content_paste' }}
+            />
+            <ListRow
+              title="Import a statement"
+              subtitle="CSV, Excel or PDF · coming soon"
+              tile={{ icon: 'upload_file' }}
+              divider
+            />
+            <ListRow
+              title="Scan a receipt"
+              subtitle="Reads the total and the shop name · coming soon"
+              tile={{ icon: 'photo_camera' }}
+              divider
+            />
+          </Card>
+        </View>
+      ) : null}
     </Sheet>
   );
 }

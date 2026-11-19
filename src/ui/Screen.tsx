@@ -44,7 +44,7 @@ export function Screen({ children, title, refreshing, onRefresh }: ScreenProps) 
   );
 }
 
-/** Uppercase section label with an optional text action ("Calendar", "See all"). */
+/** Sentence-case section label with an optional text action ("Calendar", "See all"). */
 export function SectionHeader({ title, action }: { title: string; action?: ReactNode }) {
   return (
     <View

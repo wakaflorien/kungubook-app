@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import { env } from '../../../../config/env';
 import { useAccounts } from '../../../../features/accounts/useAccounts';
 import { Amount, Card, ListRow, Screen, SectionHeader } from '../../../../ui';
 
@@ -19,13 +20,18 @@ export default function MoneyScreen() {
           onPress={() => router.push('/accounts')}
         />
       </Card>
-      <SectionHeader title="Coming next" />
-      <Card variant="flush">
-        <ListRow title="Loans" subtitle="Money you owe and money owed to you" tile={{ icon: 'handshake' }} />
-        <ListRow divider title="Contacts" subtitle="People you lend to and borrow from" tile={{ icon: 'group' }} />
-        <ListRow divider title="Due dates" subtitle="Calendar of payments in and out" tile={{ icon: 'event' }} />
-        <ListRow divider title="Budgets" subtitle="Monthly limits by category" tile={{ icon: 'donut_large' }} />
-      </Card>
+      {/* Unshipped features are previewed in mock and staging builds only. */}
+      {env.appEnv !== 'production' ? (
+        <>
+          <SectionHeader title="Coming next" />
+          <Card variant="flush">
+            <ListRow title="Loans" subtitle="Money you owe and money owed to you" tile={{ icon: 'handshake' }} />
+            <ListRow divider title="Contacts" subtitle="People you lend to and borrow from" tile={{ icon: 'group' }} />
+            <ListRow divider title="Due dates" subtitle="Calendar of payments in and out" tile={{ icon: 'event' }} />
+            <ListRow divider title="Budgets" subtitle="Monthly limits by category" tile={{ icon: 'donut_large' }} />
+          </Card>
+        </>
+      ) : null}
     </Screen>
   );
 }

@@ -14,6 +14,7 @@ export { ListRow, Tile } from './ListRow';
 export type { TileTone } from './ListRow';
 export { Segmented } from './Segmented';
 export { Sheet } from './Sheet';
+export { SnackbarHost, showSnackbar } from './Snackbar';
 export { Switch } from './Switch';
 export { HeaderActions, nativeHeaderOptions, useNativeHeaderOptions } from './nativeHeader';
 export type { HeaderAction } from './nativeHeader';
