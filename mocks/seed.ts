@@ -5,6 +5,7 @@
 import type { Account, Transaction, components } from '../src/api';
 
 type User = components['schemas']['User'];
+type Category = components['schemas']['Category'];
 type Settings = components['schemas']['Settings'];
 
 export const TODAY = '2026-11-17';
@@ -100,6 +101,50 @@ export const accounts: Account[] = [
 ];
 
 const [momo, airtel, bk, cash] = [accountId(1), accountId(2), accountId(3), accountId(5)];
+const TRANSFER_GROUP = '0193a1b2-0000-7000-8000-000000000d01';
+
+/**
+ * The default categories every new user gets (screen 84): 14 for money out, 4 for money in.
+ * `id` is a function so each mock user gets their own rows; Keza's use fixed IDs (…c01–c18).
+ */
+export const DEFAULT_CATEGORIES: { name: string; direction: 'in' | 'out'; icon: string }[] = [
+  { name: 'Food & Groceries', direction: 'out', icon: 'shopping_basket' },
+  { name: 'Transport', direction: 'out', icon: 'two_wheeler' },
+  { name: 'Eating out', direction: 'out', icon: 'restaurant' },
+  { name: 'Utilities', direction: 'out', icon: 'bolt' },
+  { name: 'Household', direction: 'out', icon: 'chair' },
+  { name: 'Rent', direction: 'out', icon: 'home' },
+  { name: 'Airtime & data', direction: 'out', icon: 'phone_iphone' },
+  { name: 'School fees', direction: 'out', icon: 'school' },
+  { name: 'Health', direction: 'out', icon: 'local_hospital' },
+  { name: 'Family support', direction: 'out', icon: 'family_restroom' },
+  { name: 'Shopping', direction: 'out', icon: 'shopping_bag' },
+  { name: 'Entertainment', direction: 'out', icon: 'movie' },
+  { name: 'Fees & charges', direction: 'out', icon: 'receipt' },
+  { name: 'Other', direction: 'out', icon: 'more_horiz' },
+  { name: 'Salary', direction: 'in', icon: 'payments' },
+  { name: 'Consulting', direction: 'in', icon: 'work' },
+  { name: 'Loan repayment', direction: 'in', icon: 'handshake' },
+  { name: 'Interest', direction: 'in', icon: 'percent' },
+];
+
+export const categoryId = (n: number) => `0193a1b2-0000-7000-8000-000000000c${String(n).padStart(2, '0')}`;
+
+export function makeCategories(id: (n: number) => string, at = '2026-01-01T08:00:00Z'): Category[] {
+  return DEFAULT_CATEGORIES.map((c, i) => ({
+    id: id(i + 1),
+    ...c,
+    sort_order: i,
+    is_system: true,
+    created_at: at,
+    updated_at: at,
+    deleted_at: null,
+    version: 1,
+  }));
+}
+
+export const categories: Category[] = makeCategories(categoryId);
+const cat = (name: string) => categories.find((c) => c.name === name)!.id;
 
 const txn = (
   n: number,
@@ -111,6 +156,9 @@ const txn = (
     source: Transaction['source'];
     counterparty_text: string;
     note?: string;
+    category_id?: string | null;
+    status?: Transaction['status'];
+    transfer_group_id?: string | null;
   },
 ): Transaction => ({
   id: `0193a1b2-0000-7000-8000-000000000b${String(n).padStart(2, '0')}`,
@@ -122,7 +170,10 @@ const txn = (
   ...meta(t.occurred_at, 1),
 });
 
-/** The "Recent" list on Home (screen 01). */
+/**
+ * Recent activity (screens 01 and 02). These rows describe history: the seeded balances above already include
+ * them, so the mock never re-applies them. Kigali Grocers is still in Review, so it isn't in any balance.
+ */
 export const transactions: Transaction[] = [
   txn(1, {
     account_id: bk,
@@ -132,6 +183,7 @@ export const transactions: Transaction[] = [
     source: 'import',
     counterparty_text: 'Inyange Industries',
     note: 'Consulting payout',
+    category_id: cat('Consulting'),
   }),
   txn(2, {
     account_id: cash,
@@ -140,6 +192,7 @@ export const transactions: Transaction[] = [
     occurred_at: '2026-11-16T07:30:00Z',
     source: 'manual',
     counterparty_text: 'SP Nyarutarama',
+    category_id: cat('Transport'),
   }),
   txn(3, {
     account_id: airtel,
@@ -149,6 +202,7 @@ export const transactions: Transaction[] = [
     source: 'sms',
     counterparty_text: 'Aline Umutoni',
     note: 'Loan repayment',
+    category_id: cat('Loan repayment'),
   }),
   txn(4, {
     account_id: momo,
@@ -157,6 +211,45 @@ export const transactions: Transaction[] = [
     occurred_at: '2026-11-17T09:42:10Z',
     source: 'shortcut',
     counterparty_text: 'Kigali Grocers',
+    category_id: cat('Food & Groceries'),
+    status: 'pending_review',
+  }),
+  // A transfer: two legs sharing a group (doc 05 §4). Neither counts as income or spending.
+  txn(5, {
+    account_id: bk,
+    kind: 'out',
+    amount: 200_000,
+    occurred_at: '2026-11-15T09:00:00Z',
+    source: 'import',
+    counterparty_text: 'MTN MoMo',
+    transfer_group_id: TRANSFER_GROUP,
+  }),
+  txn(6, {
+    account_id: momo,
+    kind: 'in',
+    amount: 200_000,
+    occurred_at: '2026-11-15T09:00:00Z',
+    source: 'import',
+    counterparty_text: 'BK Current',
+    transfer_group_id: TRANSFER_GROUP,
+  }),
+  txn(7, {
+    account_id: cash,
+    kind: 'out',
+    amount: 14_000,
+    occurred_at: '2026-11-14T17:20:00Z',
+    source: 'manual',
+    counterparty_text: 'Java House',
+    category_id: cat('Eating out'),
+  }),
+  txn(8, {
+    account_id: momo,
+    kind: 'out',
+    amount: 5_000,
+    occurred_at: '2026-11-13T08:15:00Z',
+    source: 'sms',
+    counterparty_text: 'MTN Airtime',
+    category_id: cat('Airtime & data'),
   }),
 ];
 

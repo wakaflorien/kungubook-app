@@ -7,7 +7,10 @@
  */
 import { http, HttpResponse } from 'msw';
 import type { Account, Transaction, components } from '../src/api';
+import { createChangeLog, pull, push, touch, type ChangeLog, type SyncTable } from './sync';
 import {
+  categories,
+  makeCategories,
   DEMO_EMAIL,
   DEMO_PASSWORD,
   DEMO_RESET_TOKEN,
@@ -25,12 +28,14 @@ type SettingsInput = components['schemas']['SettingsInput'];
 type AccountInput = components['schemas']['AccountInput'];
 type TransactionInput = components['schemas']['TransactionInput'];
 type Device = components['schemas']['Device'];
+type Category = components['schemas']['Category'];
 
 export interface MockUser {
   user: User;
   password: string;
   settings: Settings;
   accounts: Account[];
+  categories: Category[];
   transactions: Transaction[];
   devices: Device[];
 }
@@ -44,6 +49,8 @@ export interface MockDb {
   refreshTokens: Map<string, string>;
   /** Requests below this X-App-Version get 426. */
   minAppVersion: string;
+  /** Every row write, for /sync/pull cursors. */
+  log: ChangeLog;
 }
 
 export const KEZA_ID = kezaUser.id;
@@ -54,10 +61,14 @@ export function createMockDb(): MockDb {
     password: DEMO_PASSWORD,
     settings: defaultSettings(),
     accounts: structuredClone(accounts),
+    categories: structuredClone(categories),
     transactions: structuredClone(transactions),
     devices: [],
   };
+  const log = createChangeLog();
+  for (const r of [...keza.accounts, ...keza.categories, ...keza.transactions]) touch(log, r.id!);
   return {
+    log,
     users: new Map([[KEZA_ID, keza]]),
     accessTokens: new Map([['mock-access-1', KEZA_ID]]),
     refreshTokens: new Map([['mock-refresh-1', KEZA_ID]]),
@@ -126,9 +137,12 @@ export function createHandlers(baseUrl: string, db: MockDb = createMockDb()) {
       password,
       settings: defaultSettings(),
       accounts: [],
+      // Every new user starts with the default categories (the backend seeds them).
+      categories: makeCategories((n) => sequenceId(`c${String(seq).padStart(3, '0')}`, n), nowIso()),
       transactions: [],
       devices: [],
     };
+    for (const c of u.categories) touch(db.log, c.id ?? '');
     db.users.set(u.user.id, u);
     return u;
   };
@@ -321,6 +335,7 @@ export function createHandlers(baseUrl: string, db: MockDb = createMockDb()) {
         version: 1,
       };
       u.accounts.push(account);
+      touch(db.log, account.id!);
       return HttpResponse.json(account, { status: 201 });
     }),
 
@@ -351,6 +366,7 @@ export function createHandlers(baseUrl: string, db: MockDb = createMockDb()) {
         updated_at: nowIso(),
         version: a.version + 1,
       });
+      touch(db.log, a.id!);
       return HttpResponse.json(a);
     }),
 
@@ -359,7 +375,8 @@ export function createHandlers(baseUrl: string, db: MockDb = createMockDb()) {
       if (isResponse(u)) return u;
       const a = u.accounts.find((x) => x.id === params.id && !x.deleted_at);
       if (!a) return err(404, 'not_found', 'Account not found');
-      Object.assign(a, { deleted_at: nowIso() });
+      Object.assign(a, { deleted_at: nowIso(), version: a.version + 1 });
+      touch(db.log, a.id!);
       return new HttpResponse(null, { status: 204 });
     }),
 
@@ -379,43 +396,42 @@ export function createHandlers(baseUrl: string, db: MockDb = createMockDb()) {
       const input = (await request.json()) as TransactionInput;
       const existing = u.transactions.find((t) => t.id === input.id);
       if (existing) return HttpResponse.json({ transaction: existing }, { status: 200 });
+      if (!input.id) return err(422, 'validation_failed', 'id is required', { id: 'required' });
+      // Same rules as a pushed row (balances, defaults, validation).
+      const result = push(db.log, u, [
+        { table: 'transactions', op: 'upsert', row: { ...input, id: input.id, client_updated_at: nowIso() } },
+      ]);
+      const rejected = result.rejected[0];
+      if (rejected) return err(422, 'validation_failed', rejected.message, { amount: 'must be greater than 0' });
+      return HttpResponse.json({ transaction: u.transactions.find((t) => t.id === input.id) }, { status: 201 });
+    }),
 
-      const acct = u.accounts.find((a) => a.id === input.account_id);
-      if (!input.id || !acct || !input.kind || !input.amount || input.amount < 1) {
-        return err(422, 'validation_failed', 'id, account_id, kind and amount > 0 are required', {
-          amount: 'must be greater than 0',
-        });
-      }
-      const now = nowIso();
-      const t: Transaction = {
-        ...input,
-        id: input.id,
-        account_id: acct.id,
-        kind: input.kind,
-        amount: input.amount,
-        currency: input.currency ?? acct.currency,
-        amount_base: input.amount,
-        fee: input.fee ?? 0,
-        occurred_at: input.occurred_at ?? now,
-        status: input.status ?? 'confirmed',
-        source: 'manual',
-        created_at: now,
-        updated_at: now,
-        deleted_at: null,
-        version: 1,
+    // ------------------------------------------------------------------ categories
+    http.get(url('/categories'), ({ request }) => {
+      const u = authed(request);
+      if (isResponse(u)) return u;
+      return HttpResponse.json({ data: u.categories.filter((c) => !c.deleted_at), next_cursor: null });
+    }),
+
+    // ------------------------------------------------------------------ sync
+    http.get(url('/sync/pull'), ({ request }) => {
+      const u = authed(request);
+      if (isResponse(u)) return u;
+      const q = new URL(request.url).searchParams;
+      const since = Number(q.get('since') ?? 0) || 0;
+      const limit = Math.min(Number(q.get('limit') ?? 500) || 500, 2000);
+      return HttpResponse.json(pull(db.log, u, since, limit));
+    }),
+
+    http.post(url('/sync/push'), async ({ request }) => {
+      const u = authed(request);
+      if (isResponse(u)) return u;
+      const body = (await request.json()) as {
+        changes?: { table: SyncTable; op: 'upsert' | 'delete'; row: { id: string; client_updated_at: string } }[];
       };
-      u.transactions.push(t);
-      if (t.status === 'confirmed') {
-        // The mock plays the server here: it owns the read-only computed fields.
-        const amount = t.amount ?? 0;
-        const delta = t.kind === 'in' ? amount : -(amount + (t.fee ?? 0));
-        Object.assign(acct, {
-          balance: acct.balance + delta,
-          balance_base: acct.balance_base + delta,
-          version: acct.version + 1,
-        });
-      }
-      return HttpResponse.json({ transaction: t }, { status: 201 });
+      if (!Array.isArray(body.changes) || body.changes.length < 1 || body.changes.length > 500)
+        return err(422, 'validation_failed', 'changes: 1 to 500 items');
+      return HttpResponse.json(push(db.log, u, body.changes));
     }),
   ];
 }
