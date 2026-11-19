@@ -3,6 +3,8 @@ import { View } from 'react-native';
 import { formatMoney } from '../../../../lib/money';
 import { PROVIDERS, typeLabel } from '../../../../features/accounts/meta';
 import { useAccount, useAccounts } from '../../../../features/accounts/useAccounts';
+import { TransactionRow } from '../../../../features/transactions/TransactionRow';
+import { useTransactions } from '../../../../features/transactions/useTransactions';
 import { useTheme } from '../../../../theme';
 import { Amount, Banner, Card, EmptyState, HeaderActions, Screen, SectionHeader, Text } from '../../../../ui';
 
@@ -31,7 +33,40 @@ function Row({ label, value, divider }: { label: string; value: string; divider?
   );
 }
 
-/** Screen 32 · Account detail. The balance chart and transactions arrive with M2. */
+/** The account's latest transactions (transfers in and out included). */
+function AccountTransactions({ id }: { id: string }) {
+  const t = useTheme();
+  const router = useRouter();
+  const { data } = useTransactions({ accountIds: [id], limit: 20 });
+  return (
+    <View style={{ gap: t.space.s3 }}>
+      <SectionHeader title="Transactions" />
+      {data?.length ? (
+        <Card variant="flush">
+          {data.map((item, i) => (
+            <TransactionRow
+              key={item.txn.id}
+              item={item}
+              divider={i > 0}
+              onPress={() => router.push(`/transactions/${item.txn.id}`)}
+            />
+          ))}
+        </Card>
+      ) : (
+        <Card>
+          <EmptyState
+            icon="receipt_long"
+            title="No transactions yet"
+            body="Money you add, paste or import for this account shows up here."
+            action={{ label: 'Add a transaction', onPress: () => router.push('/transactions/new?kind=out') }}
+          />
+        </Card>
+      )}
+    </View>
+  );
+}
+
+/** Screen 32 · Account detail. The balance chart arrives with insights (M6). */
 export default function AccountDetail() {
   const t = useTheme();
   const router = useRouter();
@@ -92,16 +127,7 @@ export default function AccountDetail() {
         <Row divider label="In total balance" value={account.include_in_total ? 'Yes' : 'No'} />
       </Card>
 
-      <View style={{ gap: t.space.s3 }}>
-        <SectionHeader title="Transactions" />
-        <Card>
-          <EmptyState
-            icon="receipt_long"
-            title="No transactions yet"
-            body="Money you add, paste or import for this account shows up here."
-          />
-        </Card>
-      </View>
+      <AccountTransactions id={id} />
     </Screen>
   );
 }

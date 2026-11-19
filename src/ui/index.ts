@@ -30,3 +30,6 @@ export { MoneyInput, amountFromText, formatAmountText, textFromAmount } from './
 export { Slider } from './Slider';
 export type { SliderProps } from './Slider';
 export { ProgressBar } from './ProgressBar';
+export { DateTimeField } from './DateTimeField';
+export { dateTimeText } from './dateTimeText';
+export type { DateTimeFieldProps } from './DateTimeField';

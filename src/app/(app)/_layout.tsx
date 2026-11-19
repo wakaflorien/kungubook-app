@@ -24,6 +24,20 @@ export default function AppLayout() {
           contentStyle: { backgroundColor: t.colors.surface },
         }}
       />
+      <Stack.Screen
+        name="activity-filters"
+        options={{
+          headerShown: false,
+          presentation: 'formSheet',
+          sheetAllowedDetents: SHEET_DETENTS,
+          sheetInitialDetentIndex: 'last',
+          sheetGrabberVisible: true,
+          sheetCornerRadius: t.radius.xl,
+          contentStyle: { backgroundColor: t.colors.surface },
+        }}
+      />
+      <Stack.Screen name="transactions/new" options={{ presentation: 'modal', headerTransparent: false }} />
+      <Stack.Screen name="transactions/[id]/split" options={{ presentation: 'modal', headerTransparent: false }} />
       <Stack.Screen name="accounts/index" options={nativeHeaderOptions(t, { large: true })} />
       <Stack.Screen name="accounts/new" options={{ presentation: 'modal', headerTransparent: false }} />
       <Stack.Screen name="accounts/[id]/edit" options={{ presentation: 'modal', headerTransparent: false }} />

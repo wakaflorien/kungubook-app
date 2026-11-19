@@ -3,6 +3,9 @@ import { ActionSheetIOS, Alert, Platform, Pressable, View } from 'react-native';
 import { env } from '../../../../config/env';
 import { accountSubtitle, accountTile } from '../../../../features/accounts/meta';
 import { useAccounts } from '../../../../features/accounts/useAccounts';
+import { SyncBanner } from '../../../../features/sync/SyncBanner';
+import { TransactionRow } from '../../../../features/transactions/TransactionRow';
+import { useTransactions } from '../../../../features/transactions/useTransactions';
 import { greetingName, useSession } from '../../../../state/session';
 import { useTheme } from '../../../../theme';
 import { Amount, Button, Card, EmptyState, Icon, ListRow, Screen, SectionHeader, Text } from '../../../../ui';
@@ -71,6 +74,71 @@ function HeroCard({ total, count, currency }: { total: number; count: number; cu
   );
 }
 
+/** Screen 06 · loading: grey blocks shaped like the rows that are coming. */
+function RowsSkeleton({ rows = 3 }: { rows?: number }) {
+  const t = useTheme();
+  return (
+    <Card variant="flush" accessibilityLabel="Loading">
+      {Array.from({ length: rows }, (_, i) => (
+        <View
+          key={i}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: t.space.s3,
+            padding: t.space.s4,
+            borderTopWidth: i ? 1 : 0,
+            borderTopColor: t.colors.line,
+          }}
+        >
+          <View style={{ width: 40, height: 40, borderRadius: t.radius.md, backgroundColor: t.colors.surface2 }} />
+          <View style={{ flex: 1, gap: 6 }}>
+            <View style={{ width: '60%', height: 14, borderRadius: t.radius.sm, backgroundColor: t.colors.surface2 }} />
+            <View style={{ width: '40%', height: 12, borderRadius: t.radius.sm, backgroundColor: t.colors.surface2 }} />
+          </View>
+          <View style={{ width: 72, height: 14, borderRadius: t.radius.sm, backgroundColor: t.colors.surface2 }} />
+        </View>
+      ))}
+    </Card>
+  );
+}
+
+/** Home's "Recent": the latest five, transfers shown once. */
+function Recent() {
+  const t = useTheme();
+  const router = useRouter();
+  const { data } = useTransactions({ limit: 5 });
+  if (!data?.length) return null;
+  return (
+    <View style={{ gap: t.space.s3 }}>
+      <SectionHeader
+        title="Recent"
+        action={
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.navigate('/activity')}
+            style={{ minHeight: 44, justifyContent: 'center' }}
+          >
+            <Text variant="row" color="brand" style={{ fontFamily: t.type.title3.fontFamily }}>
+              See all
+            </Text>
+          </Pressable>
+        }
+      />
+      <Card variant="flush">
+        {data.slice(0, 5).map((item, i) => (
+          <TransactionRow
+            key={item.txn.id}
+            item={item}
+            divider={i > 0}
+            onPress={() => router.push(`/transactions/${item.txn.id}`)}
+          />
+        ))}
+      </Card>
+    </View>
+  );
+}
+
 function HeroSkeleton() {
   const t = useTheme();
   return (
@@ -109,8 +177,12 @@ export default function HomeScreen() {
       <Text variant="sub" color="ink2" style={{ marginBottom: -t.space.s4 }}>
         {greeting()} · {longDate()}
       </Text>
+      <SyncBanner />
       {isPending ? (
-        <HeroSkeleton />
+        <>
+          <HeroSkeleton />
+          <RowsSkeleton />
+        </>
       ) : isError && !data ? (
         <Card>
           <View style={{ gap: t.space.s3 }}>
@@ -171,6 +243,7 @@ export default function HomeScreen() {
               </Card>
             )}
           </View>
+          <Recent />
         </>
       ) : null}
     </Screen>
