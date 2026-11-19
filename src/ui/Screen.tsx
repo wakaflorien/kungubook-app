@@ -16,15 +16,19 @@ export interface ScreenProps {
 /**
  * Screen scaffold under a native header: bg, 16px side padding, 24px between sections.
  * `contentInsetAdjustmentBehavior="automatic"` lets iOS place content under the glass header and
- * above the tab bar, and makes large titles collapse on scroll.
+ * above the tab bar.
+ *
+ * The ScrollView must be the screen's first native view (no wrapping View): that is how UIKit finds
+ * it to collapse the large title and to shrink the iOS 26+ tab bar on scroll (`minimizeBehavior`).
  */
 export function Screen({ children, title, refreshing, onRefresh }: ScreenProps) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   return (
-    <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
+    <>
       {title !== undefined ? <Stack.Screen options={{ title }} /> : null}
       <ScrollView
+        style={{ flex: 1, backgroundColor: t.colors.bg }}
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{
           paddingHorizontal: t.space.s4,
@@ -40,7 +44,7 @@ export function Screen({ children, title, refreshing, onRefresh }: ScreenProps) 
       >
         {children}
       </ScrollView>
-    </View>
+    </>
   );
 }
 

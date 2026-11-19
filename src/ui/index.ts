@@ -21,6 +21,7 @@ export type { HeaderAction } from './nativeHeader';
 export { Text } from './Text';
 export { Screen, SectionHeader } from './Screen';
 export { Input } from './Input';
+export { SearchBar } from './SearchBar';
 export type { InputProps } from './Input';
 export { Select } from './Select';
 export type { SelectOption } from './Select';

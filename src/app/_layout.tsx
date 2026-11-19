@@ -11,11 +11,19 @@ import {
   MaterialSymbolsRounded_500Medium_Filled,
 } from '@expo-google-fonts/material-symbols-rounded';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { Stack, useRootNavigationState, useRouter, useSegments } from 'expo-router';
+import {
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider as NavigationThemeProvider,
+  Stack,
+  useRootNavigationState,
+  useRouter,
+  useSegments,
+} from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Linking, LogBox, Platform, View } from 'react-native';
 import { queryClient } from '../config/api';
 import { useSyncLoop } from '../features/sync/useSyncLoop';
@@ -140,8 +148,27 @@ function Navigator() {
     void SystemUI.setBackgroundColorAsync(t.colors.bg);
   }, [t.colors.bg]);
 
+  // React Navigation's theme drives native headers: its `dark` flag sets the header's light/dark style
+  // (glass buttons, search field) and `card` paints opaque headers. Left at the default, headers stay
+  // light (white) in dark mode.
+  const navigationTheme = useMemo(() => {
+    const base = t.scheme === 'dark' ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        primary: t.colors.brand,
+        background: t.colors.bg,
+        card: t.colors.bg,
+        text: t.colors.ink,
+        border: t.colors.line,
+        notification: t.colors.danger,
+      },
+    };
+  }, [t]);
+
   return (
-    <>
+    <NavigationThemeProvider value={navigationTheme}>
       <StatusBar style={t.scheme === 'dark' ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: t.colors.bg } }}>
         <Stack.Protected guard={status === 'signedOut'}>
@@ -160,7 +187,7 @@ function Navigator() {
       <SnackbarHost />
       {upgradeRequired ? <UpgradeRequired /> : null}
       {covered ? <PrivacyCover /> : null}
-    </>
+    </NavigationThemeProvider>
   );
 }
 
