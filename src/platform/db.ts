@@ -1,5 +1,6 @@
 import { getRandomBytes } from 'expo-crypto';
 import * as SQLite from 'expo-sqlite';
+import type { SqlDriver, SqlValue } from '../db/driver';
 import type { KeyValueStore } from '../lib/storage';
 
 /**
@@ -7,8 +8,7 @@ import type { KeyValueStore } from '../lib/storage';
  * and kept in secure storage. SQLCipher needs a development or store build (`useSQLCipher` in app.config.ts);
  * in Expo Go `PRAGMA key` is ignored and the cache is plain SQLite, which `isEncrypted()` reports.
  *
- * M1 caches API responses by key (accounts, the user) so Home shows figures instantly on a cold start.
- * The full offline repositories and sync engine arrive in M2.
+ * It holds the synced rows and the outbox of offline changes (src/db, M2), plus a small key-value cache.
  */
 const DB_NAME = 'kungubook.db';
 const DB_KEY = 'db.key';
@@ -93,3 +93,17 @@ export function createCache(store: KeyValueStore) {
 }
 
 export type Cache = ReturnType<typeof createCache>;
+
+/** The local database (src/db) on expo-sqlite. Each call reopens the file if sign-out deleted it. */
+export function sqliteDriver(store: KeyValueStore): SqlDriver {
+  const db = () => database(store);
+  return {
+    exec: async (sql) => (await db()).execAsync(sql),
+    all: async <T>(sql: string, params: readonly SqlValue[] = []) => (await db()).getAllAsync<T>(sql, [...params]),
+    get: async <T>(sql: string, params: readonly SqlValue[] = []) =>
+      (await (await db()).getFirstAsync<T>(sql, [...params])) ?? null,
+    run: async (sql, params = []) => {
+      await (await db()).runAsync(sql, [...params]);
+    },
+  };
+}
